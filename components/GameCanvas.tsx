@@ -11,26 +11,46 @@ import * as Phaser from 'phaser';
 console.log('Imported Phaser module content:', Phaser);
 
 
-// 게임 설정 객체 (기존 config와 동일)
+// 디바이스 종류에 따라 논리적 크기 결정
+function getGameDimensions() {
+    // 화면의 실제 크기를 감지하여 논리적 크기를 동적으로 결정
+    if (typeof window !== 'undefined') {
+        const maxWidth = 2400;
+        const maxHeight = 1600;
+        const minWidth = 300;
+        const minHeight = 400;
+        // 가로/세로 비율 유지 (4:3 또는 3:4)
+        let width = Math.max(minWidth, Math.min(window.innerWidth, maxWidth));
+        let height = Math.max(minHeight, Math.min(window.innerHeight, maxHeight));
+        // 모바일 환경 감지
+        const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent);
+        // 비율 유지하지 않고, width/height를 그대로 사용
+        return { width, height };
+    }
+    // SSR 등 window가 없을 때 기본값
+    return { width: 800, height: 600 };
+}
+
+const { width, height } = getGameDimensions();
+
 const config: Phaser.Types.Core.GameConfig = {
+    
     type: Phaser.AUTO,
-    width: 800,
-    height: 600,
+    width,
+    height,
     physics: {
         default: 'arcade',
         arcade: {
-            gravity: { x: 0, y: 0 }, // 중력 없음 (탑다운 게임)
-            debug: false // 개발 중에는 true로 설정하여 물리 바디 확인
+            gravity: { x: 0, y: 0 },
+            debug: false
         }
     },
-    // 씬은 컴포넌트 내부에서 정의하거나 별도 파일로 분리할 수 있습니다.
-    // 여기서는 간단하게 컴포넌트 내부에 정의합니다.
     scene: {
         preload: preload,
         create: create,
         update: update
     },
-    parent: 'game-container' // 게임 캔버스가 삽입될 DOM 엘리먼트의 ID
+    parent: 'game-container'
 };
 
 // 게임 변수 선언 (컴포넌트 스코프 또는 씬 내부에서 관리)
