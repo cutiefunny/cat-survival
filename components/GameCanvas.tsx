@@ -258,6 +258,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
         console.log("Game Size (Logical):", gameSize.width, gameSize.height);
         console.log("Display Size (Actual Canvas):", displaySize.width, displaySize.height); // 실제 캔버스 픽셀 크기
         console.log("Previous Size:", previousWidth, previousHeight);
+        // Log scale factors after resize
         console.log("Current Scale Factors:", this.scale.displayScale.x, this.scale.displayScale.y);
 
          // 게임 오버 텍스트 및 타이머 텍스트 위치 업데이트 (resize 이벤트에서 UI 위치 조정)
@@ -545,18 +546,48 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     if (this.input.activePointer.isDown) {
         // 터치 또는 마우스 클릭이 활성화된 경우 (모바일 또는 PC 터치/클릭)
         isMoving = true;
-        // 포인터 위치로 플레이어 이동
-        this.physics.moveToObject(player, this.input.activePointer, playerSpeed);
 
-        // 이동 방향에 따라 플레이어 반전 및 애니메이션 처리
-        if (this.input.activePointer.worldX < player.x) {
+        // !!! 포인터 스크린 좌표를 게임 월드 좌표로 수동 변환 !!!
+        const canvas = this.game.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.clientWidth / (this.game.config.width as number);
+        const scaleY = canvas.clientHeight / (this.game.config.height as number);
+
+        // 캔버스 내에서의 포인터 상대 좌표
+        const pointerCanvasX = this.input.activePointer.x - rect.left;
+        const pointerCanvasY = this.input.activePointer.y - rect.top;
+
+        // 게임 월드 좌표로 변환 (스케일링 및 카메라 스크롤 고려)
+        // 카메라 스크롤은 이미 player.x/y에 반영되어 있으므로,
+        // 포인터 위치는 카메라 기준으로 변환 후 플레이어 위치에 더해줍니다.
+        // 또는 단순히 스케일링된 좌표를 사용하고 moveToObject가 카메라를 따라가도록 둡니다.
+        // 여기서는 Scale Manager의 worldX/worldY가 부정확한 문제를 우회하기 위해
+        // 캔버스 내 상대 좌표를 논리적 게임 크기에 비례하여 변환합니다.
+        const targetWorldX = pointerCanvasX / scaleX + this.cameras.main.scrollX;
+        const targetWorldY = pointerCanvasY / scaleY + this.cameras.main.scrollY;
+
+        // 디버깅 로그 추가 (수동 변환 좌표 확인)
+        // if (this.game.loop.frame % 30 === 0) {
+        //     console.log(`Manual World Coords: x=${targetWorldX}, y=${targetWorldY}`);
+        //     console.log(`Canvas Rect: left=${rect.left}, top=${rect.top}, width=${rect.width}, height=${rect.height}`);
+        //     console.log(`Calculated Scales: x=${scaleX}, y=${scaleY}`);
+        // }
+
+
+        // 포인터 위치로 플레이어 이동 (수동 변환된 좌표 사용)
+        // this.physics.moveToObject(player, this.input.activePointer, playerSpeed); // 기존 라인 주석 처리
+        this.physics.moveToObject(player, { x: targetWorldX, y: targetWorldY }, playerSpeed);
+
+
+        // 이동 방향에 따라 플레이어 반전 및 애니메이션 처리 (수동 변환된 좌표 사용)
+        if (targetWorldX < player.x) {
             player.setFlipX(false); // 왼쪽 이동 시 반전 해제 (기본 방향이 왼쪽이라고 가정)
-        } else if (this.input.activePointer.worldX > player.x) {
+        } else if (targetWorldX > player.x) {
             player.setFlipX(true); // 오른쪽 이동 시 반전 적용
         }
 
-         // 목표 지점 근처에 도달하면 멈추도록 설정
-         const distance = Phaser.Math.Distance.Between(player.x, player.y, this.input.activePointer.worldX, this.input.activePointer.worldY);
+         // 목표 지점 근처에 도달하면 멈추도록 설정 (수동 변환된 좌표 사용)
+         const distance = Phaser.Math.Distance.Between(player.x, player.y, targetWorldX, targetWorldY);
          if (distance < 5) { // 5픽셀 이내로 가까워지면
              if (player.body) {
                  player.body.stop(); // 물리 바디 정지
@@ -674,12 +705,23 @@ const GameCanvas: React.FC = () => {
             const newGame = new Phaser.Game(currentConfig); // 동적으로 생성된 config 사용
             gameRef.current = newGame;
 
+            // !!! 모바일 환경 감지 및 화면 축소 적용 !!!
+            const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent);
+            if (isMobile && gameContainerRef.current) {
+                console.log("Mobile device detected. Scaling game container to 70%.");
+                gameContainerRef.current.style.transform = 'scale(0.7)';
+                // transform-origin을 중앙으로 설정하여 축소 시 중앙 기준으로 줄어들도록 합니다.
+                gameContainerRef.current.style.transformOrigin = 'center center';
+            }
+
+
              // 윈도우 크기 변경 이벤트 리스너 추가 (Phaser 스케일 매니저가 처리하지만, React 컴포넌트 레벨에서 확인 가능)
             // 이 리스너는 디버깅에 도움이 될 수 있습니다.
             const handleResize = () => {
                  console.log("Window resized. Current window size:", window.innerWidth, window.innerHeight);
                  // Phaser의 Scale Manager가 자동으로 캔버스 크기를 조정합니다.
                  // RESIZE 모드에서는 논리적 크기는 변경되지 않습니다.
+                 // 모바일 축소 스타일은 이미 적용되어 있습니다.
             };
             window.addEventListener('resize', handleResize);
 
@@ -709,6 +751,9 @@ const GameCanvas: React.FC = () => {
     return (
         // Phaser가 게임 캔버스을 삽입할 div 엘리먼트
         // 이 엘리먼트의 ID가 config.parent와 일치해야 합니다.
+        // 스케일 모드를 사용하므로 div의 크기를 유연하게 설정할 수 있습니다.
+        // display: flex, justifyContent: center, alignItems: center는 게임 컨테이너를 중앙에 배치합니다.
+        // 모바일 환경에서는 useEffect에서 transform: scale(0.7)이 추가됩니다.
         <div id="game-container" ref={gameContainerRef} style={{ width: '100%', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {/* 게임 캔버스는 여기에 동적으로 삽입됩니다 */}
         </div>
