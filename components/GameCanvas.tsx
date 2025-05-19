@@ -106,7 +106,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     this.cameras.main.setBackgroundColor('#ffffff'); // 배경색을 흰색으로 변경
 
     // !!! 모바일 감지 및 스프라이트 스케일 팩터 설정 !!!
-    const isMobile = this.sys.game.device.os.mobile;
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     const spriteScaleFactor = isMobile ? 0.7 : 1.0; // 모바일이면 70% 스케일, 아니면 100%
 
 
