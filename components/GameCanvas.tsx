@@ -577,7 +577,7 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     const cursors = this.data.get('cursors') as Phaser.Types.Input.Keyboard.CursorKeys | undefined;
 
     // 모바일 환경 감지
-    const isMobile = this.sys.game.device.os.mobile;
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
 
     if (!player || !cursors || !mice || !dogs) {
         // 객체가 아직 생성되지 않았거나 유효하지 않으면 업데이트 스킵
@@ -626,7 +626,7 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     } else if (this.input.activePointer.isDown) {
         // 터치 또는 마우스 클릭이 활성화된 경우 (모바일 싱글 터치 또는 PC 클릭)
         // 두 포인터가 모두 떨어졌거나 PC 환경인 경우 이 블록 실행
-        if (isMobile && (this.input.pointer1.isUp || this.input.pointer2.isUp)) {
+        if (isMobile && (!this.input.pointer1.isDown || !this.input.pointer2.isDown)) {
              // 모바일에서 한 손가락만 남았거나 모두 떨어진 경우, 핀치 상태 초기화
              initialPinchDistance = 0;
              // lastCameraZoom = this.cameras.main.zoom; // 필요에 따라 현재 줌 상태 저장
