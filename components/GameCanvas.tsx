@@ -67,7 +67,7 @@ function preload(this: Phaser.Scene) // TypeScript에서 this의 타입을 명�
     this.load.spritesheet('player_sprite', '/images/cat_walk_3frame_sprite.png', { frameWidth: 100, frameHeight: 100 });
 
     // 기존 애니메이션 스프라이트 시트 로드 (유지)
-    // this.load.spritesheet('animation_sprite', 'https://phaser.io/examples/assets/sprites/metalslug_mummy37x45.png', { frameWidth: 37, frameHeight: 45 });
+    this.load.spritesheet('animation_sprite', 'https://phaser.io/examples/assets/sprites/metalslug_mummy37x45.png', { frameWidth: 37, frameHeight: 45 });
 
     // 적 캐릭터 스프라이트 시트 이미지 로드 (마우스)
     this.load.spritesheet('mouse_enemy_sprite', '/images/mouse_2frame_sprite.png', { frameWidth: 100, frameHeight: 64 });
@@ -95,17 +95,11 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     // 배경 설정
     this.cameras.main.setBackgroundColor('#ffffff'); // 배경색을 흰색으로 변경
 
-    // !!! 모바일 감지 및 스케일 팩터 설정 !!!
-    const isMobile = this.sys.game.device.os.mobile;
-    const spriteScaleFactor = isMobile ? 0.7 : 1.0; // 모바일이면 70% 스케일, 아니면 100%
-
-
     // 플레이어 생성
     // 게임의 논리적 중앙 좌표는 this.game.config.width / 2, this.game.config.height / 2 입니다.
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
     player.setCollideWorldBounds(true);
-    // !!! 플레이어 스케일에 스케일 팩터 적용 !!!
-    player.setScale(0.5 * spriteScaleFactor);
+    player.setScale(0.5);
     player.setDrag(500);
 
     // 플레이어 애니메이션 생성 (기존 코드 유지)
@@ -145,7 +139,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     // 간단한 적 생성 (마우스, 예시: 1초마다 적 생성)
     this.time.addEvent({
         delay: 1000,
-        callback: () => spawnMouse.call(this, mice, player, spriteScaleFactor), // 스케일 팩터 전달
+        callback: () => spawnMouse.call(this, mice, player), // spawnEnemy -> spawnMouse로 이름 변경
         callbackScope: this,
         loop: true
     });
@@ -163,7 +157,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
             let dogsToSpawn = this.data.get('dogsToSpawn');
             console.log(`Spawning ${dogsToSpawn} dogs.`);
             for (let i = 0; i < dogsToSpawn; i++) {
-                 spawnDog.call(this, dogs, player, spriteScaleFactor); // 현재 설정된 수만큼 개 생성, 스케일 팩터 전달
+                 spawnDog.call(this, dogs, player); // 현재 설정된 수만큼 개 생성
             }
 
             // !!! 다음 이벤트에서 생성할 개 수 증가 (2개씩) !!!
@@ -253,8 +247,6 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     this.data.set('timerText', timerText); // 타이머 텍스트 저장
     this.data.set('gameOverText', gameOverText); // 게임 오버 텍스트 저장
     // this.data.set('animatedSprite', animatedSprite);
-    this.data.set('spriteScaleFactor', spriteScaleFactor); // 스케일 팩터 저장
-
 
     // 카메라가 플레이어를 따라다니도록 설정 (선택 사항, 뱀파이어 서바이벌 스타일)
     this.cameras.main.startFollow(player, true, 0.05, 0.05); // 플레이어를 부드럽게 따라다니도록 설정
@@ -288,7 +280,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 
 
 // 적 생성 함수 (마우스, 이름 변경)
-function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite, spriteScaleFactor: number) // TypeScript에서 this와 인자 타입 명시
+function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) // TypeScript에서 this와 인자 타입 명시
 {
     // 게임 오버 상태이면 적 생성하지 않음
     if (gameOver) return;
@@ -328,8 +320,7 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
     const mouse = mice.create(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite; // 타입 단언
     mouse.setBounce(0.2);
     mouse.setCollideWorldBounds(false);
-    // !!! 마우스 스케일에 스케일 팩터 적용 !!!
-    mouse.setScale((32 / 100) * spriteScaleFactor); // 가로/세로 비율 유지하며 스케일 조정
+    mouse.setScale(32 / 100); // 가로/세로 비율 유지하며 스케일 조정
 
     // !!! 마우스 애니메이션 재생 !!!
     mouse.play('mouse_walk');
@@ -339,7 +330,7 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
 }
 
 // !!! 새로운 적 생성 함수 (개) !!!
-function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite, spriteScaleFactor: number) // TypeScript에서 this와 인자 타입 명시
+function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) // TypeScript에서 this와 인자 타입 명시
 {
     // 게임 오버 상태이면 적 생성하지 않음
     if (gameOver) return;
@@ -379,8 +370,7 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
     const dog = dogs.create(x, y, 'dog_enemy_sprite') as Phaser.Physics.Arcade.Sprite; // 타입 단언
     dog.setBounce(0.2);
     dog.setCollideWorldBounds(false);
-    // !!! 개 스케일에 스케일 팩터 적용 !!!
-    dog.setScale(0.5 * spriteScaleFactor); // 개 캐릭터 크기 조정 (예시)
+    dog.setScale(0.5); // 개 캐릭터 크기 조정 (예시)
 
     // !!! 개 애니메이션 재생 !!!
     dog.play('dog_walk');
@@ -557,7 +547,6 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
         isMoving = true;
 
         // !!! 포인터 스크린 좌표를 게임 월드 좌표로 수동 변환 !!!
-        // 이 부분은 이전 수정에서 추가된 정확도 향상 로직입니다.
         const canvas = this.game.canvas;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.clientWidth / (this.game.config.width as number);
@@ -568,6 +557,11 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
         const pointerCanvasY = this.input.activePointer.y - rect.top;
 
         // 게임 월드 좌표로 변환 (스케일링 및 카메라 스크롤 고려)
+        // 카메라 스크롤은 이미 player.x/y에 반영되어 있으므로,
+        // 포인터 위치는 카메라 기준으로 변환 후 플레이어 위치에 더해줍니다.
+        // 또는 단순히 스케일링된 좌표를 사용하고 moveToObject가 카메라를 따라가도록 둡니다.
+        // 여기서는 Scale Manager의 worldX/worldY가 부정확한 문제를 우회하기 위해
+        // 캔버스 내 상대 좌표를 논리적 게임 크기에 비례하여 변환합니다.
         const targetWorldX = pointerCanvasX / scaleX + this.cameras.main.scrollX;
         const targetWorldY = pointerCanvasY / scaleY + this.cameras.main.scrollY;
 
@@ -580,6 +574,7 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 
 
         // 포인터 위치로 플레이어 이동 (수동 변환된 좌표 사용)
+        // this.physics.moveToObject(player, this.input.activePointer, playerSpeed); // 기존 라인 주석 처리
         this.physics.moveToObject(player, { x: targetWorldX, y: targetWorldY }, playerSpeed);
 
 
@@ -709,25 +704,12 @@ const GameCanvas: React.FC = () => {
             const newGame = new Phaser.Game(currentConfig); // 동적으로 생성된 config 사용
             gameRef.current = newGame;
 
-            // !!! 모바일 환경 감지 및 화면 축소 스타일 제거 !!!
-            // 모바일에서 화면 전체를 축소하는 transform 스타일은 제거합니다.
-            // 대신 스프라이트 크기를 조정합니다.
-            // const isMobile = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(window.navigator.userAgent);
-            // if (isMobile && gameContainerRef.current) {
-            //     console.log("Mobile device detected. Scaling game container to 70%.");
-            //     gameContainerRef.current.style.transform = 'scale(0.7)';
-            //     // transform-origin을 중앙으로 설정하여 축소 시 중앙 기준으로 줄어들도록 합니다.
-            //     gameContainerRef.current.style.transformOrigin = 'center center';
-            // }
-
-
              // 윈도우 크기 변경 이벤트 리스너 추가 (Phaser 스케일 매니저가 처리하지만, React 컴포넌트 레벨에서 확인 가능)
             // 이 리스너는 디버깅에 도움이 될 수 있습니다.
             const handleResize = () => {
                  console.log("Window resized. Current window size:", window.innerWidth, window.innerHeight);
                  // Phaser의 Scale Manager가 자동으로 캔버스 크기를 조정합니다.
                  // RESIZE 모드에서는 논리적 크기는 변경되지 않습니다.
-                 // 모바일 축소 스타일은 이제 스프라이트 스케일로 처리됩니다.
             };
             window.addEventListener('resize', handleResize);
 
@@ -757,9 +739,6 @@ const GameCanvas: React.FC = () => {
     return (
         // Phaser가 게임 캔버스을 삽입할 div 엘리먼트
         // 이 엘리먼트의 ID가 config.parent와 일치해야 합니다.
-        // 스케일 모드를 사용하므로 div의 크기를 유연하게 설정할 수 있습니다.
-        // display: flex, justifyContent: center, alignItems: center는 게임 컨테이너를 중앙에 배치합니다.
-        // 모바일 환경에서의 축소는 이제 스프라이트 스케일로 처리됩니다.
         <div id="game-container" ref={gameContainerRef} style={{ width: '100%', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {/* 게임 캔버스는 여기에 동적으로 삽입됩니다 */}
         </div>
