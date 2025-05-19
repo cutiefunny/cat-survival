@@ -60,6 +60,13 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
 let gameOver = false; // 게임 오버 상태를 추적하는 변수
 let elapsedTime = 0; // 경과 시간 (초)
 
+// 핀치 줌 관련 변수
+let initialPinchDistance = 0;
+let lastCameraZoom = 1;
+const MIN_ZOOM = 0.5; // 최소 줌 레벨
+const MAX_ZOOM = 2.0; // 최대 줌 레벨
+
+
 // 리소스 로딩 함수
 function preload(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 {
@@ -91,15 +98,24 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     // 게임 오버 상태 초기화
     gameOver = false;
     elapsedTime = 0; // 경과 시간 초기화
+    initialPinchDistance = 0; // 핀치 줌 변수 초기화
+    lastCameraZoom = 1; // 핀치 줌 변수 초기화
+
 
     // 배경 설정
     this.cameras.main.setBackgroundColor('#ffffff'); // 배경색을 흰색으로 변경
+
+    // !!! 모바일 감지 및 스프라이트 스케일 팩터 설정 !!!
+    const isMobile = this.sys.game.device.os.mobile;
+    const spriteScaleFactor = isMobile ? 0.7 : 1.0; // 모바일이면 70% 스케일, 아니면 100%
+
 
     // 플레이어 생성
     // 게임의 논리적 중앙 좌표는 this.game.config.width / 2, this.game.config.height / 2 입니다.
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
     player.setCollideWorldBounds(true);
-    player.setScale(0.5);
+    // !!! 플레이어 스케일에 스케일 팩터 적용 !!!
+    player.setScale(0.5 * spriteScaleFactor);
     player.setDrag(500);
 
     // 플레이어 애니메이션 생성 (기존 코드 유지)
@@ -139,7 +155,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     // 간단한 적 생성 (마우스, 예시: 1초마다 적 생성)
     this.time.addEvent({
         delay: 1000,
-        callback: () => spawnMouse.call(this, mice, player), // spawnEnemy -> spawnMouse로 이름 변경
+        callback: () => spawnMouse.call(this, mice, player), // 스케일 팩터는 spawnMouse에서 직접 감지
         callbackScope: this,
         loop: true
     });
@@ -157,7 +173,7 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
             let dogsToSpawn = this.data.get('dogsToSpawn');
             console.log(`Spawning ${dogsToSpawn} dogs.`);
             for (let i = 0; i < dogsToSpawn; i++) {
-                 spawnDog.call(this, dogs, player); // 현재 설정된 수만큼 개 생성
+                 spawnDog.call(this, dogs, player); // 현재 설정된 수만큼 개 생성, 스케일 팩터는 spawnDog에서 직접 감지
             }
 
             // !!! 다음 이벤트에서 생성할 개 수 증가 (2개씩) !!!
@@ -179,7 +195,8 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     const cursors = this.input.keyboard?.createCursorKeys();
 
     // !!! 터치 입력 활성화 (기본적으로 활성화되어 있지만 명시적으로 확인) !!!
-    this.input.addPointer(1); // 멀티 터치를 지원하려면 필요한 만큼 포인터 추가
+    this.input.addPointer(1); // 두 번째 포인터 활성화 (핀치 줌용)
+    this.input.addPointer(2); // 세 번째 포인터 활성화 (혹시 모를 경우 대비)
 
 
     // 충돌 감지 설정 (플레이어 vs 마우스, 기존 코드 유지)
@@ -246,7 +263,9 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     this.data.set('scoreText', scoreText);
     this.data.set('timerText', timerText); // 타이머 텍스트 저장
     this.data.set('gameOverText', gameOverText); // 게임 오버 텍스트 저장
-    // this.data.set('animatedSprite', animatedSprite);
+    // this.data.set('animatedSprite', animatedSprite); // 사용하지 않는 애니메이션 스프라이트 제거
+    this.data.set('spriteScaleFactor', spriteScaleFactor); // 스케일 팩터 저장
+
 
     // 카메라가 플레이어를 따라다니도록 설정 (선택 사항, 뱀파이어 서바이벌 스타일)
     this.cameras.main.startFollow(player, true, 0.05, 0.05); // 플레이어를 부드럽게 따라다니도록 설정
@@ -274,6 +293,29 @@ function create(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 
     // Log initial scale factors (유지)
     console.log("Initial Scale Factors:", this.scale.displayScale.x, this.scale.displayScale.y);
+
+    // !!! 핀치 줌 이벤트 리스너 설정 (모바일에서만) !!!
+    if (isMobile) {
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            // 두 번째 포인터가 내려갔을 때 초기 거리 계산
+            if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
+                initialPinchDistance = Phaser.Math.Distance.Between(
+                    this.input.pointer1.x, this.input.pointer1.y,
+                    this.input.pointer2.x, this.input.pointer2.y
+                );
+                lastCameraZoom = this.cameras.main.zoom; // 현재 카메라 줌 상태 저장
+                console.log("Two pointers down. Initial pinch distance:", initialPinchDistance);
+            }
+        });
+
+        // pointerup 이벤트에서는 특별한 처리가 필요 없지만, 디버깅을 위해 남겨둘 수 있습니다.
+        // this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        //     if (!this.input.pointer1.isDown && !this.input.pointer2.isDown) {
+        //         initialPinchDistance = 0; // 두 포인터 모두 떨어지면 초기 거리 초기화
+        //         console.log("Both pointers up. Resetting pinch distance.");
+        //     }
+        // });
+    }
 }
 
 // 개 생성 수 증가 함수는 제거됨
@@ -320,7 +362,9 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
     const mouse = mice.create(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite; // 타입 단언
     mouse.setBounce(0.2);
     mouse.setCollideWorldBounds(false);
-    mouse.setScale(32 / 100); // 가로/세로 비율 유지하며 스케일 조정
+    // !!! 마우스 스케일에 스케일 팩터 적용 !!!
+    const spriteScaleFactor = this.data.get('spriteScaleFactor') as number;
+    mouse.setScale((32 / 100) * spriteScaleFactor); // 가로/세로 비율 유지하며 스케일 조정
 
     // !!! 마우스 애니메이션 재생 !!!
     mouse.play('mouse_walk');
@@ -370,7 +414,9 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
     const dog = dogs.create(x, y, 'dog_enemy_sprite') as Phaser.Physics.Arcade.Sprite; // 타입 단언
     dog.setBounce(0.2);
     dog.setCollideWorldBounds(false);
-    dog.setScale(0.5); // 개 캐릭터 크기 조정 (예시)
+    // !!! 개 스케일에 스케일 팩터 적용 !!!
+    const spriteScaleFactor = this.data.get('spriteScaleFactor') as number;
+    dog.setScale(0.5 * spriteScaleFactor); // 개 캐릭터 크기 조정 (예시)
 
     // !!! 개 애니메이션 재생 !!!
     dog.play('dog_walk');
@@ -530,6 +576,9 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
     // 키보드 입력 객체
     const cursors = this.data.get('cursors') as Phaser.Types.Input.Keyboard.CursorKeys | undefined;
 
+    // 모바일 환경 감지
+    const isMobile = this.sys.game.device.os.mobile;
+
     if (!player || !cursors || !mice || !dogs) {
         // 객체가 아직 생성되지 않았거나 유효하지 않으면 업데이트 스킵
         return;
@@ -541,12 +590,52 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 
     player.setVelocity(0); // 매 프레임 속도 초기화
 
-    // !!! 입력 방식 분리: 터치/마우스 우선, 아니면 키보드 !!!
-    if (this.input.activePointer.isDown) {
-        // 터치 또는 마우스 클릭이 활성화된 경우 (모바일 또는 PC 터치/클릭)
+    // !!! 입력 방식 분리: 모바일 핀치 줌 > 모바일 터치 이동 > PC 키보드 !!!
+
+    if (isMobile && this.input.pointer1.isDown && this.input.pointer2.isDown) {
+         // !!! 모바일 환경에서 두 손가락(포인터)이 눌려있는 경우 (핀치 줌) !!!
+         const currentPinchDistance = Phaser.Math.Distance.Between(
+             this.input.pointer1.x, this.input.pointer1.y,
+             this.input.pointer2.x, this.input.pointer2.y
+         );
+
+         if (initialPinchDistance === 0) {
+             // 핀치 시작 시 초기 거리 저장
+             initialPinchDistance = currentPinchDistance;
+             lastCameraZoom = this.cameras.main.zoom;
+         } else {
+             // 현재 거리와 초기 거리의 비율로 줌 레벨 계산
+             let zoomFactor = currentPinchDistance / initialPinchDistance;
+
+             // 이전 줌 레벨에 비율을 곱하여 새로운 줌 레벨 설정
+             let newZoom = lastCameraZoom * zoomFactor;
+
+             // 줌 레벨 제한 적용
+             newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
+
+             // 카메라 줌 적용
+             this.cameras.main.setZoom(newZoom);
+
+             // 다음 프레임을 위해 현재 줌 상태 저장 (상대적인 줌 변화를 위해)
+             // initialPinchDistance = currentPinchDistance; // 이 라인은 필요에 따라 활성화하여 절대적인 줌 변화를 적용할 수도 있습니다. 현재는 상대 변화 방식
+             // lastCameraZoom = newZoom; // 이 라인은 상대 변화 방식에서는 필요 없습니다.
+         }
+
+         isMoving = false; // 핀치 줌 중에는 이동하지 않음
+
+    } else if (this.input.activePointer.isDown) {
+        // 터치 또는 마우스 클릭이 활성화된 경우 (모바일 싱글 터치 또는 PC 클릭)
+        // 두 포인터가 모두 떨어졌거나 PC 환경인 경우 이 블록 실행
+        if (isMobile && (this.input.pointer1.isUp || this.input.pointer2.isUp)) {
+             // 모바일에서 한 손가락만 남았거나 모두 떨어진 경우, 핀치 상태 초기화
+             initialPinchDistance = 0;
+             // lastCameraZoom = this.cameras.main.zoom; // 필요에 따라 현재 줌 상태 저장
+        }
+
         isMoving = true;
 
         // !!! 포인터 스크린 좌표를 게임 월드 좌표로 수동 변환 !!!
+        // 이 부분은 이전 수정에서 추가된 정확도 향상 로직입니다.
         const canvas = this.game.canvas;
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.clientWidth / (this.game.config.width as number);
@@ -574,7 +663,6 @@ function update(this: Phaser.Scene) // TypeScript에서 this의 타입을 명시
 
 
         // 포인터 위치로 플레이어 이동 (수동 변환된 좌표 사용)
-        // this.physics.moveToObject(player, this.input.activePointer, playerSpeed); // 기존 라인 주석 처리
         this.physics.moveToObject(player, { x: targetWorldX, y: targetWorldY }, playerSpeed);
 
 
@@ -704,6 +792,7 @@ const GameCanvas: React.FC = () => {
             const newGame = new Phaser.Game(currentConfig); // 동적으로 생성된 config 사용
             gameRef.current = newGame;
 
+
              // 윈도우 크기 변경 이벤트 리스너 추가 (Phaser 스케일 매니저가 처리하지만, React 컴포넌트 레벨에서 확인 가능)
             // 이 리스너는 디버깅에 도움이 될 수 있습니다.
             const handleResize = () => {
@@ -739,6 +828,7 @@ const GameCanvas: React.FC = () => {
     return (
         // Phaser가 게임 캔버스을 삽입할 div 엘리먼트
         // 이 엘리먼트의 ID가 config.parent와 일치해야 합니다.
+        // 스케일 모드를 사용하므로 div의 크기를 유연하게 설정할 수 있습니다.
         <div id="game-container" ref={gameContainerRef} style={{ width: '100%', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {/* 게임 캔버스는 여기에 동적으로 삽입됩니다 */}
         </div>
