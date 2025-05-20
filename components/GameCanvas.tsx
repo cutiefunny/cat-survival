@@ -1,20 +1,27 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as Phaser from 'phaser';
+import ShopModal from './shopModal'; // ShopModal.tsx 파일 경로에 맞게 수정해주세요.
+
 
 function getGameDimensions() {
-    // getGameDimensions 함수는 사용자 요청에 따라 수정하지 않습니다.
     if (typeof window !== 'undefined') {
         const maxWidth = 2400;
         const maxHeight = 1600;
-        const minWidth = 400; // 사용자 요청 값 유지
-        const minHeight = 800; // 사용자 요청 값 유지
+        const minWidth = 1200;
+        const minHeight = 1600;
         let width = Math.max(minWidth, Math.min(window.innerWidth, maxWidth));
         let height = Math.max(minHeight, Math.min(window.innerHeight, maxHeight));
-        return { width, height };
+
+        const minWidthApplied = (width === minWidth);
+        return { width, height, minWidthApplied };
     }
-    return { width: 800, height: 600 };
+    return { width: 800, height: 600, minWidthApplied: false };
+}
+
+interface CustomGameConfig extends Phaser.Types.Core.GameConfig {
+    // initialSceneData?: { ... };
 }
 
 const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
@@ -27,12 +34,12 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
         }
     },
     scene: {
+        key: 'MainScene', // 씬의 고유 키
         preload: preload,
         create: create,
         update: update
     },
     parent: 'game-container',
-    // orientation 속성을 GameConfig에 직접 지정합니다.
 
     scale: {
         mode: Phaser.Scale.RESIZE,
@@ -66,16 +73,13 @@ const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
-// !!! MODIFIED: D-Pad 관련 상수 제거됨 !!!
-// const DPAD_BUTTON_SIZE = 50;
-// const DPAD_PADDING = 30;
-// const DPAD_ALPHA_IDLE = 0.5;
-// const DPAD_ALPHA_PRESSED = 0.9;
-// const DPAD_COLOR = 0x555555;
+let skills: number[] = []; // skills 변수 유지
+skills.push(1); // 기본값으로 1 추가 (테스트용)
 
 
 function preload(this: Phaser.Scene) {
     this.load.spritesheet('player_sprite', '/images/cat_walk_3frame_sprite.png', { frameWidth: 100, frameHeight: 100 });
+    this.load.image('cat_punch', '/images/cat_punch.png'); // cat_punch 이미지 로드
     this.load.spritesheet('mouse_enemy_sprite', '/images/mouse_2frame_sprite.png', { frameWidth: 100, frameHeight: 64 });
     this.load.spritesheet('dog_enemy_sprite', '/images/dog_2frame_horizontal.png', { frameWidth: 100, frameHeight: 100 });
 }
@@ -88,16 +92,22 @@ function create(this: Phaser.Scene) {
 
     this.cameras.main.setBackgroundColor('#ffffff');
 
-    // isMobile 감지는 D-Pad 생성에만 필요했으므로, D-Pad 제거 후에는 이 변수의 사용처가 달라집니다.
-    // spriteScaleFactor는 isMobile에 따라 여전히 사용됩니다.
-    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS; 
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
 
-    const spriteScaleFactor = isMobile ? 0.7 : 1.0;
+    const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
 
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
     player.setCollideWorldBounds(true);
-    player.setScale(0.5 * spriteScaleFactor);
     player.setDrag(500);
+
+    let finalPlayerScale;
+    if (minWidthApplied) {
+        finalPlayerScale = 0.7;
+    } else {
+        finalPlayerScale = 0.5 * (isMobile ? 0.7 : 1.0);
+    }
+    player.setScale(finalPlayerScale);
+
 
     this.anims.create({
         key: 'cat_walk',
@@ -198,12 +208,13 @@ function create(this: Phaser.Scene) {
     this.data.set('scoreText', scoreText);
     this.data.set('timerText', timerText);
     this.data.set('gameOverText', gameOverText);
-    this.data.set('spriteScaleFactor', spriteScaleFactor);
 
     this.data.set('isKnockedBack', false);
     this.data.set('energy', INITIAL_PLAYER_ENERGY);
     this.data.set('energyBarBg', energyBarBg);
     this.data.set('energyBarFill', energyBarFill);
+    this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
+
 
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
 
@@ -214,10 +225,9 @@ function create(this: Phaser.Scene) {
     worldBorder.lineStyle(4, 0xff0000, 1);
     worldBorder.strokeRect(0, 0, width, height);
     this.data.set('worldBorder', worldBorder);
-
-    // !!! MODIFIED: D-Pad 컨트롤러 생성 로직 제거됨 !!!
+    
+    // D-Pad 컨트롤러 생성 로직 (현재는 제거된 상태)
     // if (isMobile) { ... }
-
 
     this.scale.on('resize', (gameSize: Phaser.Structs.Size, baseSize: Phaser.Structs.Size, displaySize: Phaser.Structs.Size, previousWidth: number, previousHeight: number) => {
         console.log('Canvas Resized!');
@@ -240,11 +250,16 @@ function create(this: Phaser.Scene) {
 
         this.physics.world.setBounds(0, 0, newWidth, newHeight);
 
-        // !!! MODIFIED: D-Pad 버튼 위치 조정 로직 제거됨 !!!
+        // D-Pad 버튼 위치 조정 로직 (현재는 제거된 상태)
         // if (isMobile) { ... }
     });
 
     console.log('Initial Scale Factors:', this.scale.displayScale.x, this.scale.displayScale.y);
+}
+
+// CustomDogSprite 인터페이스 (dog에 isKnockedBack 속성 추가를 위함)
+interface CustomDogSprite extends Phaser.Physics.Arcade.Sprite {
+    isKnockedBack?: boolean; // 넉백 상태를 추적하는 속성
 }
 
 function spawnMouseVillain(this: Phaser.Scene) {
@@ -256,7 +271,7 @@ function spawnMouseVillain(this: Phaser.Scene) {
     const activeMice = mice.countActive(true);
 
     if (activeMice >= MAX_ACTIVE_MICE) {
-        console.log(`Max mice (${MAX_ACTIVE_MICE}) reached. Skipping mouse spawn.`);
+        // console.log(`Max mice (${MAX_ACTIVE_MICE}) reached. Skipping mouse spawn.`);
         return;
     }
 
@@ -272,7 +287,7 @@ function spawnDogVillain(this: Phaser.Scene) {
     const activeDogs = dogs.countActive(true);
 
     if (activeDogs >= MAX_ACTIVE_DOGS) {
-        console.log(`Max dogs (${MAX_ACTIVE_DOGS}) reached. Skipping dog spawn.`);
+        //console.log(`Max dogs (${MAX_ACTIVE_DOGS}) reached. Skipping dog spawn.`);
         return;
     }
 
@@ -296,7 +311,9 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
     const mouse = mice.create(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite;
     mouse.setBounce(0.2);
     mouse.setCollideWorldBounds(false);
-    const spriteScaleFactor = this.data.get('spriteScaleFactor') as number;
+    const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
+    const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
     mouse.setScale((32 / 100) * spriteScaleFactor);
     mouse.play('mouse_walk');
     this.physics.moveToObject(mouse, player, 50);
@@ -316,12 +333,15 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
         default: x = 0; y = 0; break;
     }
 
-    const dog = dogs.create(x, y, 'dog_enemy_sprite') as Phaser.Physics.Arcade.Sprite;
+    const dog = dogs.create(x, y, 'dog_enemy_sprite') as CustomDogSprite; // CustomDogSprite로 캐스팅
     dog.setBounce(0.2);
     dog.setCollideWorldBounds(false);
-    const spriteScaleFactor = this.data.get('spriteScaleFactor') as number;
+    const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
+    const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
     dog.setScale(0.5 * spriteScaleFactor);
     dog.play('dog_walk');
+    dog.isKnockedBack = false; // 기본적으로 넉백 상태가 아님
 }
 
 function hitMouse(
@@ -350,45 +370,75 @@ function hitMouse(
 function hitDog(
     this: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
-    dog: Phaser.Physics.Arcade.Sprite
+    dogObject: Phaser.Physics.Arcade.Sprite // dogObject로 이름 변경하여 CustomDogSprite로 캐스팅
 ) {
     if (gameOver) return;
 
     console.log('Collision detected! Player hit by dog!');
 
-    if (player.body && dog.body) {
-        const direction = new Phaser.Math.Vector2(player.x - dog.x, player.y - dog.y).normalize();
-        player.setVelocity(direction.x * PLAYER_PUSH_BACK_FORCE, direction.y * PLAYER_PUSH_BACK_FORCE);
-        console.log(`Player pushed back by dog with force: ${PLAYER_PUSH_BACK_FORCE}`);
+    const dog = dogObject as CustomDogSprite; // CustomDogSprite로 캐스팅
+    // 플레이어가 개를 바라보는 방향을 향하고 있는지 확인
+    const dotProduct = (dog.x - player.x) * (player.flipX ? -1 : 1);
+    // !!! MODIFIED START: Conditional knockback based on skills !!!
+    // skills 배열이 number[] 타입이므로 1을 숫자로 사용합니다.
+    if (skills.includes(1) && dotProduct < 0) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
+        // Skill '1' active: knock back the dog, not the player
+        if (player.body && dog.body) {
+            const direction = new Phaser.Math.Vector2(dog.x - player.x, dog.y - player.y).normalize();
+            dog.setVelocity(direction.x * PLAYER_PUSH_BACK_FORCE, direction.y * PLAYER_PUSH_BACK_FORCE);
 
-        this.data.set('isKnockedBack', true);
-        this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
-            this.data.set('isKnockedBack', false);
-            console.log('Knockback ended (dog)');
-        }, [], this);
-    }
+            console.log(`Dog knocked back by player with force: ${PLAYER_PUSH_BACK_FORCE} (Skill 1 active)`);
 
-    if (dog && dog.body && (dog as any).disableBody) {
-        console.log('Disabling dog body.');
-        (dog as any).disableBody(true, true);
+            dog.isKnockedBack = true; // 개 넉백 상태 설정
+            dog.stop(); // 개 애니메이션 정지
+            dog.body.checkCollision.none = true; // 넉백 중 충돌 비활성화
+            this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
+            dog.isKnockedBack = false; // 개 넉백 상태 해제
+                dog.play('dog_walk', true); // 개 애니메이션 다시 시작
+                if (dog.body) {
+                    dog.body.checkCollision.none = false; // 넉백 후 충돌 다시 활성화
+                }
+                console.log('Dog knockback ended.');
+            }, [], this);
+
+            // 플레이어 스프라이트 변경 후 원상 복귀
+            player.setTexture('cat_punch'); // cat_punch 이미지 로드되어 있어야 함
+            this.time.delayedCall(300, () => {
+                player.setTexture('player_sprite'); // 원래 스프라이트 시트로 복귀
+                player.play('cat_walk', true); // 원래 애니메이션 재생
+            }, [], this);
+        }
     } else {
-        console.warn('Attempted to disable body on an object without a physics body or disableBody method:', dog);
-    }
+        // Skill '1' not active: player gets knocked back (original logic)
+        if (player.body && dog.body) {
+            const direction = new Phaser.Math.Vector2(player.x - dog.x, player.y - dog.y).normalize();
+            player.setVelocity(direction.x * PLAYER_PUSH_BACK_FORCE, direction.y * PLAYER_PUSH_BACK_FORCE);
+            console.log(`Player pushed back by dog with force: ${PLAYER_PUSH_BACK_FORCE} (Skill 1 inactive)`);
 
-    let energy = this.data.get('energy');
-    energy--;
-    this.data.set('energy', energy);
+            this.data.set('isKnockedBack', true);
+            this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
+                this.data.set('isKnockedBack', false);
+                console.log('Knockback ended (player)');
+            }, [], this);
+        }
+        
+        let energy = this.data.get('energy');
+        energy--;
+        this.data.set('energy', energy);
 
-    const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
-    const newWidth = (energy / INITIAL_PLAYER_ENERGY) * ENERGY_BAR_WIDTH;
+        // energyText는 이제 energyBarFill로 대체되었으므로 관련 코드 수정
+        const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
+        const newWidth = (energy / INITIAL_PLAYER_ENERGY) * ENERGY_BAR_WIDTH;
 
-    energyBarFill.clear();
-    energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
-    energyBarFill.fillRect(0, 0, newWidth, ENERGY_BAR_HEIGHT);
+        energyBarFill.clear();
+        energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
+        energyBarFill.fillRect(0, 0, newWidth, ENERGY_BAR_HEIGHT);
 
-    if (energy <= 0) {
-        console.log('Energy dropped to 0 or below. Game Over!');
-        endGame.call(this);
+        if (energy <= 0) {
+            console.log('Energy dropped to 0 or below. Game Over!');
+            endGame.call(this);
+        }
+        // !!! MODIFIED END: 에너지 감소 로직 이동 !!!
     }
 }
 
@@ -422,8 +472,6 @@ function update(this: Phaser.Scene) {
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
     const cursors = this.data.get('cursors') as Phaser.Types.Input.Keyboard.CursorKeys | undefined;
-    // isMobile은 D-Pad 생성에만 주로 사용되었으므로, 여기서는 D-Pad 제거 후 관련 로직을 재구성합니다.
-    // 터치 입력 자체는 this.input.activePointer.isDown으로 감지됩니다.
     const isKnockedBack = this.data.get('isKnockedBack') as boolean;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
@@ -435,9 +483,23 @@ function update(this: Phaser.Scene) {
     const playerSpeed = BASE_PLAYER_SPEED;
     let isMovingForAnimation = false;
 
-    // !!! MODIFIED START: 입력 처리 로직 재구성 (D-Pad 제거 및 터치 이동 재활성화) !!!
+    const score = this.data.get('score') as number;
+    const shopOpened = this.data.get('shopOpened') as boolean;
+    const openShopModal = this.data.get('openShopModal') as ((score: number) => void) | undefined;
+    
+    if (score >= 100 && !shopOpened) { 
+        this.data.set('shopOpened', true);
+        this.physics.pause();
+        if (openShopModal) {
+            console.log("Phaser Scene Update: Calling openShopModal callback. Score:", score); 
+            openShopModal(score); 
+        } else {
+            console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data! This indicates a failure in passing the callback from React to Phaser."); 
+        }
+    }
+
+
     if (!isKnockedBack) {
-        // 핀치 줌 (모바일 및 PC 터치패드에서 작동)
         if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
             const currentPinchDistance = Phaser.Math.Distance.Between(
                 this.input.pointer1.x, this.input.pointer1.y,
@@ -453,10 +515,9 @@ function update(this: Phaser.Scene) {
                 newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
                 this.cameras.main.setZoom(newZoom);
             }
-            player.setVelocity(0); // 핀치 줌 중에는 플레이어 정지
+            player.setVelocity(0);
             isMovingForAnimation = false;
         }
-        // 화면 터치 이동 (모바일 및 PC 마우스 클릭) 재활성화
         else if (this.input.activePointer.isDown) {
             const canvas = this.game.canvas;
             const rect = canvas.getBoundingClientRect();
@@ -487,7 +548,6 @@ function update(this: Phaser.Scene) {
                 isMovingForAnimation = true;
             }
         }
-        // 키보드 이동 (PC에서만 작동)
         else if (cursors.left.isDown || cursors.right.isDown || cursors.up.isDown || cursors.down.isDown) {
             player.setVelocity(0);
             if (cursors.left.isDown) {
@@ -507,7 +567,6 @@ function update(this: Phaser.Scene) {
             }
             isMovingForAnimation = true;
         }
-        // 입력 없음 (정지)
         else {
             if (player.body && Math.abs(player.body.velocity.x) < 10 && Math.abs(player.body.velocity.y) < 10) {
                 player.setVelocity(0);
@@ -517,14 +576,12 @@ function update(this: Phaser.Scene) {
             }
         }
     } else {
-        // 넉백 중일 때 (모바일/PC 공통)
         if (player.body && (Math.abs(player.body.velocity.x) > 10 || Math.abs(player.body.velocity.y) > 10)) {
             isMovingForAnimation = true;
         } else {
             isMovingForAnimation = false;
         }
     }
-    // !!! MODIFIED END: 입력 처리 로직 재구성 !!!
 
     if (isMovingForAnimation) {
         player.play('cat_walk', true);
@@ -559,8 +616,9 @@ function update(this: Phaser.Scene) {
     });
 
     dogs.getChildren().forEach((dogObject) => {
-        const dog = dogObject as Phaser.Physics.Arcade.Sprite;
-        if (dog.active && dog.body) {
+        //const dog = dogObject as Phaser.Physics.Arcade.Sprite;
+        const dog = dogObject as CustomDogSprite; // CustomDogSprite로 캐스팅
+        if (dog.active && dog.body && !dog.isKnockedBack) {
             this.physics.moveToObject(dog, player, DOG_CHASE_SPEED);
             if (dog.body.velocity.x < 0) {
                 dog.setFlipX(false);
@@ -574,21 +632,62 @@ function update(this: Phaser.Scene) {
 const GameCanvas: React.FC = () => {
     const gameContainerRef = useRef<HTMLDivElement>(null);
     const gameRef = useRef<Phaser.Game | null>(null);
+    const [showShopModal, setShowShopModal] = useState(false);
+    const [currentScore, setCurrentScore] = useState(0);
 
     useEffect(() => {
         const isClient = typeof window !== 'undefined';
 
         if (isClient && gameContainerRef.current && !gameRef.current) {
             console.log('Initializing Phaser game on client...');
-            const { width, height } = getGameDimensions();
-            const currentConfig: Phaser.Types.Core.GameConfig = {
+            const { width, height, minWidthApplied } = getGameDimensions();
+            
+            const initialDataForScene: {
+                minWidthApplied: boolean;
+                openShopModal: (score: number) => void;
+            } = { // 타입을 명시적으로 지정
+                minWidthApplied: minWidthApplied,
+                openShopModal: (score: number) => { // 상점 모달을 여는 콜백
+                    console.log("React: openShopModal callback called from Phaser. Score:", score); // React 측 로그
+                    setShowShopModal(true);
+                    setCurrentScore(score); // 현재 점수를 모달에 전달
+                    if (gameRef.current) {
+                        gameRef.current.scene.pause('MainScene'); // 씬 키 'MainScene' 사용
+                    }
+                },
+            };
+
+            // const sceneConfigWithData: MySceneConfig = { 
+            //     ...(baseConfig.scene as MySceneConfig), // baseConfig.scene을 MySceneConfig로 캐스팅하고 복사
+            //     data: initialDataForScene // data 속성 추가
+            // };
+
+            const currentConfig: Phaser.Types.Core.GameConfig = { 
                 ...baseConfig,
                 width: width,
                 height: height,
+                // scene: sceneConfigWithData, // 수정된 scene 객체를 할당
             };
+            
             currentConfig.parent = gameContainerRef.current.id;
             const newGame = new Phaser.Game(currentConfig);
             gameRef.current = newGame;
+
+            newGame.events.on(Phaser.Core.Events.READY, () => {
+                console.log("Phaser Game is READY. Attempting to get scene 'MainScene' and set data.");
+                const gameScene = newGame.scene.getScene('MainScene'); // 씬 키로 씬 가져오기
+
+                if (gameScene) {
+                    console.log("Successfully retrieved 'MainScene'. Setting data directly on scene.data.");
+                    // minWidthApplied와 openShopModal 콜백을 씬의 data manager에 직접 설정
+                    gameScene.data.set('minWidthApplied', initialDataForScene.minWidthApplied);
+                    gameScene.data.set('openShopModal', initialDataForScene.openShopModal);
+                    console.log("Scene data for shop modal set successfully.");
+                } else {
+                    console.error("CRITICAL ERROR: 'MainScene' not found after game ready event. Shop modal will not function.");
+                }
+            });
+
 
             const handleResize = () => {
                 console.log('Window resized. Current window size:', window.innerWidth, window.innerHeight);
@@ -610,10 +709,19 @@ const GameCanvas: React.FC = () => {
                 gameRef.current = null;
             }
         };
-    }, []);
+    }, []); // 의존성 배열에 아무것도 없으므로 컴포넌트 마운트 시 한 번만 실행됩니다.
+
+    const closeShopModal = () => {
+        setShowShopModal(false);
+        if (gameRef.current) {
+            gameRef.current.scene.resume('MainScene'); // 씬 키 'MainScene' 사용
+        }
+    };
 
     return (
         <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            {/* 상점 모달 React 컴포넌트 렌더링 */}
+            <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
         </div>
     );
 };
