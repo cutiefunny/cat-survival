@@ -33,7 +33,6 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
     },
     parent: 'game-container',
     // orientation 속성을 GameConfig에 직접 지정합니다.
-    orientation: Phaser.Scale.LANDSCAPE, // 모바일 가로 모드 기본 설정
 
     scale: {
         mode: Phaser.Scale.RESIZE,
