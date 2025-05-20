@@ -4,11 +4,12 @@ import React, { useEffect, useRef } from 'react';
 import * as Phaser from 'phaser';
 
 function getGameDimensions() {
+    // getGameDimensions 함수는 사용자 요청에 따라 수정하지 않습니다.
     if (typeof window !== 'undefined') {
         const maxWidth = 2400;
         const maxHeight = 1600;
-        const minWidth = 1200;
-        const minHeight = 1600;
+        const minWidth = 400; // 사용자 요청 값 유지
+        const minHeight = 800; // 사용자 요청 값 유지
         let width = Math.max(minWidth, Math.min(window.innerWidth, maxWidth));
         let height = Math.max(minHeight, Math.min(window.innerHeight, maxHeight));
         return { width, height };
@@ -31,11 +32,11 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
         update: update
     },
     parent: 'game-container',
-    // orientation 속성은 GameConfig에 직접 지정할 수 없습니다.
+    // orientation 속성을 GameConfig에 직접 지정합니다.
+    orientation: Phaser.Scale.LANDSCAPE, // 모바일 가로 모드 기본 설정
 
     scale: {
         mode: Phaser.Scale.RESIZE,
-        // orientation: Phaser.Scale.LANDSCAPE, // 이곳에서는 삭제됨
     }
 };
 
@@ -66,16 +67,16 @@ const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
-const DPAD_BUTTON_SIZE = 50;
-const DPAD_PADDING = 30;
-const DPAD_ALPHA_IDLE = 0.5;
-const DPAD_ALPHA_PRESSED = 0.9;
-const DPAD_COLOR = 0x555555;
+// !!! MODIFIED: D-Pad 관련 상수 제거됨 !!!
+// const DPAD_BUTTON_SIZE = 50;
+// const DPAD_PADDING = 30;
+// const DPAD_ALPHA_IDLE = 0.5;
+// const DPAD_ALPHA_PRESSED = 0.9;
+// const DPAD_COLOR = 0x555555;
 
 
 function preload(this: Phaser.Scene) {
     this.load.spritesheet('player_sprite', '/images/cat_walk_3frame_sprite.png', { frameWidth: 100, frameHeight: 100 });
-    this.load.spritesheet('animation_sprite', 'https://phaser.io/examples/assets/sprites/metalslug_mummy37x45.png', { frameWidth: 37, frameHeight: 45 });
     this.load.spritesheet('mouse_enemy_sprite', '/images/mouse_2frame_sprite.png', { frameWidth: 100, frameHeight: 64 });
     this.load.spritesheet('dog_enemy_sprite', '/images/dog_2frame_horizontal.png', { frameWidth: 100, frameHeight: 100 });
 }
@@ -88,7 +89,10 @@ function create(this: Phaser.Scene) {
 
     this.cameras.main.setBackgroundColor('#ffffff');
 
-    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
+    // isMobile 감지는 D-Pad 생성에만 필요했으므로, D-Pad 제거 후에는 이 변수의 사용처가 달라집니다.
+    // spriteScaleFactor는 isMobile에 따라 여전히 사용됩니다.
+    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS; 
+
     const spriteScaleFactor = isMobile ? 0.7 : 1.0;
 
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
@@ -212,53 +216,8 @@ function create(this: Phaser.Scene) {
     worldBorder.strokeRect(0, 0, width, height);
     this.data.set('worldBorder', worldBorder);
 
-    if (isMobile) {
-        this.data.set('dPadStates', { up: false, down: false, left: false, right: false });
-
-        const buttonSize = DPAD_BUTTON_SIZE;
-        const padding = DPAD_PADDING;
-
-        const dPadCenterX = (this.game.config.width as number) - padding - (buttonSize / 2) - buttonSize;
-        const dPadCenterY = (this.game.config.height as number) - padding - (buttonSize / 2) - buttonSize;
-
-        const upButton = this.add.graphics()
-            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
-            .fillRect(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2, buttonSize, buttonSize)
-            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
-            .setScrollFactor(0)
-            .on('pointerdown', () => { this.data.get('dPadStates').up = true; upButton.alpha = DPAD_ALPHA_PRESSED; })
-            .on('pointerup', () => { this.data.get('dPadStates').up = false; upButton.alpha = DPAD_ALPHA_IDLE; })
-            .on('pointerout', () => { this.data.get('dPadStates').up = false; upButton.alpha = DPAD_ALPHA_IDLE; });
-
-        const downButton = this.add.graphics()
-            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
-            .fillRect(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2, buttonSize, buttonSize)
-            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
-            .setScrollFactor(0)
-            .on('pointerdown', () => { this.data.get('dPadStates').down = true; downButton.alpha = DPAD_ALPHA_PRESSED; })
-            .on('pointerup', () => { this.data.get('dPadStates').down = false; downButton.alpha = DPAD_ALPHA_IDLE; })
-            .on('pointerout', () => { this.data.get('dPadStates').down = false; downButton.alpha = DPAD_ALPHA_IDLE; });
-
-        const leftButton = this.add.graphics()
-            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
-            .fillRect(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize)
-            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
-            .setScrollFactor(0)
-            .on('pointerdown', () => { this.data.get('dPadStates').left = true; leftButton.alpha = DPAD_ALPHA_PRESSED; })
-            .on('pointerup', () => { this.data.get('dPadStates').left = false; leftButton.alpha = DPAD_ALPHA_IDLE; })
-            .on('pointerout', () => { this.data.get('dPadStates').left = false; leftButton.alpha = DPAD_ALPHA_IDLE; });
-
-        const rightButton = this.add.graphics()
-            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
-            .fillRect(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize)
-            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
-            .setScrollFactor(0)
-            .on('pointerdown', () => { this.data.get('dPadStates').right = true; rightButton.alpha = DPAD_ALPHA_PRESSED; })
-            .on('pointerup', () => { this.data.get('dPadStates').right = false; rightButton.alpha = DPAD_ALPHA_IDLE; })
-            .on('pointerout', () => { this.data.get('dPadStates').right = false; rightButton.alpha = DPAD_ALPHA_IDLE; });
-
-        this.data.set('dPadButtons', [upButton, downButton, leftButton, rightButton]);
-    }
+    // !!! MODIFIED: D-Pad 컨트롤러 생성 로직 제거됨 !!!
+    // if (isMobile) { ... }
 
 
     this.scale.on('resize', (gameSize: Phaser.Structs.Size, baseSize: Phaser.Structs.Size, displaySize: Phaser.Structs.Size, previousWidth: number, previousHeight: number) => {
@@ -282,38 +241,8 @@ function create(this: Phaser.Scene) {
 
         this.physics.world.setBounds(0, 0, newWidth, newHeight);
 
-        if (isMobile) {
-            const dPadButtons = this.data.get('dPadButtons') as Phaser.GameObjects.Graphics[];
-            const buttonSize = DPAD_BUTTON_SIZE;
-            const padding = DPAD_PADDING;
-
-            const dPadCenterX = (newWidth as number) - padding - (buttonSize / 2) - buttonSize;
-            const dPadCenterY = (newHeight as number) - padding - (buttonSize / 2) - buttonSize;
-
-            if (dPadButtons && dPadButtons.length > 0) {
-                // 각 버튼의 위치를 새롭게 계산하여 설정
-                // 상단 버튼
-                dPadButtons[0].setPosition(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2);
-                if (dPadButtons[0].input) {
-                    (dPadButtons[0].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[0].x, dPadButtons[0].y);
-                }
-                // 하단 버튼
-                dPadButtons[1].setPosition(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2);
-                if (dPadButtons[1].input) {
-                    (dPadButtons[1].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[1].x, dPadButtons[1].y);
-                }
-                // 좌측 버튼
-                dPadButtons[2].setPosition(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2);
-                if (dPadButtons[2].input) {
-                    (dPadButtons[2].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[2].x, dPadButtons[2].y);
-                }
-                // 우측 버튼
-                dPadButtons[3].setPosition(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2);
-                if (dPadButtons[3].input) {
-                    (dPadButtons[3].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[3].x, dPadButtons[3].y);
-                }
-            }
-        }
+        // !!! MODIFIED: D-Pad 버튼 위치 조정 로직 제거됨 !!!
+        // if (isMobile) { ... }
     });
 
     console.log('Initial Scale Factors:', this.scale.displayScale.x, this.scale.displayScale.y);
@@ -494,7 +423,8 @@ function update(this: Phaser.Scene) {
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
     const cursors = this.data.get('cursors') as Phaser.Types.Input.Keyboard.CursorKeys | undefined;
-    const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
+    // isMobile은 D-Pad 생성에만 주로 사용되었으므로, 여기서는 D-Pad 제거 후 관련 로직을 재구성합니다.
+    // 터치 입력 자체는 this.input.activePointer.isDown으로 감지됩니다.
     const isKnockedBack = this.data.get('isKnockedBack') as boolean;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
@@ -506,11 +436,10 @@ function update(this: Phaser.Scene) {
     const playerSpeed = BASE_PLAYER_SPEED;
     let isMovingForAnimation = false;
 
-    const dPadStates = isMobile ? (this.data.get('dPadStates') as { up: boolean, down: boolean, left: boolean, right: boolean }) : undefined;
-
-
+    // !!! MODIFIED START: 입력 처리 로직 재구성 (D-Pad 제거 및 터치 이동 재활성화) !!!
     if (!isKnockedBack) {
-        if (isMobile && this.input.pointer1.isDown && this.input.pointer2.isDown) {
+        // 핀치 줌 (모바일 및 PC 터치패드에서 작동)
+        if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
             const currentPinchDistance = Phaser.Math.Distance.Between(
                 this.input.pointer1.x, this.input.pointer1.y,
                 this.input.pointer2.x, this.input.pointer2.y
@@ -525,22 +454,11 @@ function update(this: Phaser.Scene) {
                 newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
                 this.cameras.main.setZoom(newZoom);
             }
-            player.setVelocity(0);
+            player.setVelocity(0); // 핀치 줌 중에는 플레이어 정지
             isMovingForAnimation = false;
-
-        } else if (isMobile && dPadStates && (dPadStates.up || dPadStates.down || dPadStates.left || dPadStates.right)) {
-            player.setVelocity(0);
-            if (dPadStates.up) player.setVelocityY(-playerSpeed);
-            if (dPadStates.down) player.setVelocityY(playerSpeed);
-            if (dPadStates.left) player.setVelocityX(-playerSpeed);
-            if (dPadStates.right) player.setVelocityX(playerSpeed);
-
-            if (player.body instanceof Phaser.Physics.Arcade.Body) {
-                player.body.velocity.normalize().scale(playerSpeed);
-            }
-            isMovingForAnimation = true;
-
-        } else if (this.input.activePointer.isDown) {
+        }
+        // 화면 터치 이동 (모바일 및 PC 마우스 클릭) 재활성화
+        else if (this.input.activePointer.isDown) {
             const canvas = this.game.canvas;
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.clientWidth / (this.game.config.width as number);
@@ -569,8 +487,9 @@ function update(this: Phaser.Scene) {
             } else {
                 isMovingForAnimation = true;
             }
-
-        } else if (cursors.left.isDown || cursors.right.isDown || cursors.up.isDown || cursors.down.isDown) {
+        }
+        // 키보드 이동 (PC에서만 작동)
+        else if (cursors.left.isDown || cursors.right.isDown || cursors.up.isDown || cursors.down.isDown) {
             player.setVelocity(0);
             if (cursors.left.isDown) {
                 player.setVelocityX(-playerSpeed);
@@ -588,22 +507,25 @@ function update(this: Phaser.Scene) {
                 player.body.velocity.normalize().scale(playerSpeed);
             }
             isMovingForAnimation = true;
-
-        } else {
+        }
+        // 입력 없음 (정지)
+        else {
             if (player.body && Math.abs(player.body.velocity.x) < 10 && Math.abs(player.body.velocity.y) < 10) {
                 player.setVelocity(0);
                 isMovingForAnimation = false;
             } else {
-                isMovingForAnimation = true;
+                isMovingForAnimation = true; // 넉백 잔여 속도 등으로 계속 움직이는 경우
             }
         }
     } else {
+        // 넉백 중일 때 (모바일/PC 공통)
         if (player.body && (Math.abs(player.body.velocity.x) > 10 || Math.abs(player.body.velocity.y) > 10)) {
             isMovingForAnimation = true;
         } else {
             isMovingForAnimation = false;
         }
     }
+    // !!! MODIFIED END: 입력 처리 로직 재구성 !!!
 
     if (isMovingForAnimation) {
         player.play('cat_walk', true);
