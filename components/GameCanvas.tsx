@@ -7,8 +7,8 @@ function getGameDimensions() {
     if (typeof window !== 'undefined') {
         const maxWidth = 2400;
         const maxHeight = 1600;
-        const minWidth = 300;
-        const minHeight = 400;
+        const minWidth = 1200;
+        const minHeight = 1600;
         let width = Math.max(minWidth, Math.min(window.innerWidth, maxWidth));
         let height = Math.max(minHeight, Math.min(window.innerHeight, maxHeight));
         return { width, height };
@@ -31,8 +31,12 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
         update: update
     },
     parent: 'game-container',
+    // !!! 변경된 부분: orientation 속성을 scale 밖으로 이동 !!!
+    orientation: Phaser.Scale.LANDSCAPE, // GameConfig의 직접 속성
+
     scale: {
         mode: Phaser.Scale.RESIZE,
+        // orientation: Phaser.Scale.LANDSCAPE, // 이곳에서는 삭제됨
     }
 };
 
@@ -52,18 +56,22 @@ const INITIAL_PLAYER_ENERGY = 3;
 const BASE_PLAYER_SPEED = 200;
 const DOG_CHASE_SPEED = BASE_PLAYER_SPEED * 0.5;
 
-// !!! 변경된 상수: 쥐와 개 생성 규칙 분리 !!!
-const MOUSE_SPAWN_INTERVAL_MS = 1000; // 1초마다 쥐 생성
-const MAX_ACTIVE_MICE = 30; // 화면에 존재할 수 있는 최대 쥐 수
+const MOUSE_SPAWN_INTERVAL_MS = 1000;
+const MAX_ACTIVE_MICE = 30;
 
-const DOG_SPAWN_INTERVAL_MS = 2000; // 2초마다 개 생성
-const MAX_ACTIVE_DOGS = 20; // 화면에 존재할 수 있는 최대 개 수 (기존 MAX_ACTIVE_VILLAINS 역할)
-
+const DOG_SPAWN_INTERVAL_MS = 2000;
+const MAX_ACTIVE_DOGS = 20;
 
 const ENERGY_BAR_WIDTH = 60;
 const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
+
+const DPAD_BUTTON_SIZE = 50;
+const DPAD_PADDING = 30;
+const DPAD_ALPHA_IDLE = 0.5;
+const DPAD_ALPHA_PRESSED = 0.9;
+const DPAD_COLOR = 0x555555;
 
 
 function preload(this: Phaser.Scene) {
@@ -114,22 +122,19 @@ function create(this: Phaser.Scene) {
     const mice = this.physics.add.group();
     const dogs = this.physics.add.group();
 
-    // !!! 변경된 부분: 쥐 전용 생성 타이머 추가 !!!
     this.time.addEvent({
         delay: MOUSE_SPAWN_INTERVAL_MS,
-        callback: spawnMouseVillain, // 쥐 생성 관리 함수 호출
+        callback: spawnMouseVillain,
         callbackScope: this,
         loop: true
     });
 
-    // !!! 변경된 부분: 개 전용 생성 타이머 추가 (기존 통합 빌런 타이머 역할) !!!
     this.time.addEvent({
         delay: DOG_SPAWN_INTERVAL_MS,
-        callback: spawnDogVillain, // 개 생성 관리 함수 호출
+        callback: spawnDogVillain,
         callbackScope: this,
         loop: true
     });
-
 
     const cursors = this.input.keyboard?.createCursorKeys();
     this.input.addPointer(1);
@@ -142,7 +147,6 @@ function create(this: Phaser.Scene) {
     this.physics.add.collider(dogs, dogs);
     this.physics.add.collider(mice, dogs);
 
-
     const scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '16px', color: '#000000' });
     scoreText.setOrigin(0.5);
 
@@ -154,7 +158,6 @@ function create(this: Phaser.Scene) {
     timerText.setOrigin(0.5);
     timerText.setVisible(false);
 
-
     const energyBarBg = this.add.graphics();
     energyBarBg.fillStyle(ENERGY_BAR_COLOR_BG, 0.8);
     energyBarBg.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
@@ -162,7 +165,6 @@ function create(this: Phaser.Scene) {
     const energyBarFill = this.add.graphics();
     energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
     energyBarFill.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
-
 
     this.time.addEvent({
         delay: 1000,
@@ -201,8 +203,64 @@ function create(this: Phaser.Scene) {
     this.data.set('energyBarBg', energyBarBg);
     this.data.set('energyBarFill', energyBarFill);
 
-
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
+
+    const { width, height } = getGameDimensions();
+    this.physics.world.setBounds(0, 0, width, height);
+
+    const worldBorder = this.add.graphics();
+    worldBorder.lineStyle(4, 0xff0000, 1);
+    worldBorder.strokeRect(0, 0, width, height);
+    this.data.set('worldBorder', worldBorder);
+
+    if (isMobile) {
+        this.data.set('dPadStates', { up: false, down: false, left: false, right: false });
+
+        const buttonSize = DPAD_BUTTON_SIZE;
+        const padding = DPAD_PADDING;
+
+        const dPadCenterX = (this.game.config.width as number) - padding - (buttonSize / 2) - buttonSize;
+        const dPadCenterY = (this.game.config.height as number) - padding - (buttonSize / 2) - buttonSize;
+
+        const upButton = this.add.graphics()
+            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
+            .fillRect(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2, buttonSize, buttonSize)
+            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
+            .setScrollFactor(0)
+            .on('pointerdown', () => { this.data.get('dPadStates').up = true; upButton.alpha = DPAD_ALPHA_PRESSED; })
+            .on('pointerup', () => { this.data.get('dPadStates').up = false; upButton.alpha = DPAD_ALPHA_IDLE; })
+            .on('pointerout', () => { this.data.get('dPadStates').up = false; upButton.alpha = DPAD_ALPHA_IDLE; });
+
+        const downButton = this.add.graphics()
+            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
+            .fillRect(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2, buttonSize, buttonSize)
+            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
+            .setScrollFactor(0)
+            .on('pointerdown', () => { this.data.get('dPadStates').down = true; downButton.alpha = DPAD_ALPHA_PRESSED; })
+            .on('pointerup', () => { this.data.get('dPadStates').down = false; downButton.alpha = DPAD_ALPHA_IDLE; })
+            .on('pointerout', () => { this.data.get('dPadStates').down = false; downButton.alpha = DPAD_ALPHA_IDLE; });
+
+        const leftButton = this.add.graphics()
+            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
+            .fillRect(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize)
+            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
+            .setScrollFactor(0)
+            .on('pointerdown', () => { this.data.get('dPadStates').left = true; leftButton.alpha = DPAD_ALPHA_PRESSED; })
+            .on('pointerup', () => { this.data.get('dPadStates').left = false; leftButton.alpha = DPAD_ALPHA_IDLE; })
+            .on('pointerout', () => { this.data.get('dPadStates').left = false; leftButton.alpha = DPAD_ALPHA_IDLE; });
+
+        const rightButton = this.add.graphics()
+            .fillStyle(DPAD_COLOR, DPAD_ALPHA_IDLE)
+            .fillRect(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize)
+            .setInteractive(new Phaser.Geom.Rectangle(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2, buttonSize, buttonSize), Phaser.Geom.Rectangle.Contains)
+            .setScrollFactor(0)
+            .on('pointerdown', () => { this.data.get('dPadStates').right = true; rightButton.alpha = DPAD_ALPHA_PRESSED; })
+            .on('pointerup', () => { this.data.get('dPadStates').right = false; rightButton.alpha = DPAD_ALPHA_IDLE; })
+            .on('pointerout', () => { this.data.get('dPadStates').right = false; rightButton.alpha = DPAD_ALPHA_IDLE; });
+
+        this.data.set('dPadButtons', [upButton, downButton, leftButton, rightButton]);
+    }
+
 
     this.scale.on('resize', (gameSize: Phaser.Structs.Size, baseSize: Phaser.Structs.Size, displaySize: Phaser.Structs.Size, previousWidth: number, previousHeight: number) => {
         console.log('Canvas Resized!');
@@ -215,29 +273,53 @@ function create(this: Phaser.Scene) {
         if (gameOverText) {
             gameOverText.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
         }
+
+        const currentWorldBorder = this.data.get('worldBorder') as Phaser.GameObjects.Graphics;
+        const { width: newWidth, height: newHeight } = getGameDimensions();
+
+        currentWorldBorder.clear();
+        currentWorldBorder.lineStyle(4, 0xff0000, 1);
+        currentWorldBorder.strokeRect(0, 0, newWidth, newHeight);
+
+        this.physics.world.setBounds(0, 0, newWidth, newHeight);
+
+        if (isMobile) {
+            const dPadButtons = this.data.get('dPadButtons') as Phaser.GameObjects.Graphics[];
+            const buttonSize = DPAD_BUTTON_SIZE;
+            const padding = DPAD_PADDING;
+
+            const dPadCenterX = (newWidth as number) - padding - (buttonSize / 2) - buttonSize;
+            const dPadCenterY = (newHeight as number) - padding - (buttonSize / 2) - buttonSize;
+
+            if (dPadButtons && dPadButtons.length > 0) {
+                // 각 버튼의 위치를 새롭게 계산하여 설정
+                // 상단 버튼
+                dPadButtons[0].setPosition(dPadCenterX - buttonSize / 2, dPadCenterY - buttonSize - padding / 2);
+                if (dPadButtons[0].input) {
+                    (dPadButtons[0].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[0].x, dPadButtons[0].y);
+                }
+                // 하단 버튼
+                dPadButtons[1].setPosition(dPadCenterX - buttonSize / 2, dPadCenterY + padding / 2);
+                if (dPadButtons[1].input) {
+                    (dPadButtons[1].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[1].x, dPadButtons[1].y);
+                }
+                // 좌측 버튼
+                dPadButtons[2].setPosition(dPadCenterX - buttonSize - padding / 2, dPadCenterY - buttonSize / 2);
+                if (dPadButtons[2].input) {
+                    (dPadButtons[2].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[2].x, dPadButtons[2].y);
+                }
+                // 우측 버튼
+                dPadButtons[3].setPosition(dPadCenterX + padding / 2, dPadCenterY - buttonSize / 2);
+                if (dPadButtons[3].input) {
+                    (dPadButtons[3].input.hitArea as Phaser.Geom.Rectangle).setPosition(dPadButtons[3].x, dPadButtons[3].y);
+                }
+            }
+        }
     });
 
     console.log('Initial Scale Factors:', this.scale.displayScale.x, this.scale.displayScale.y);
-
-    if (isMobile) {
-        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-            if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
-                initialPinchDistance = Phaser.Math.Distance.Between(
-                    this.input.pointer1.x, this.input.pointer1.y,
-                    this.input.pointer2.x, this.input.pointer2.y
-                );
-                lastCameraZoom = this.cameras.main.zoom;
-                console.log('Two pointers down. Initial pinch distance:', initialPinchDistance);
-            }
-        });
-    }
 }
 
-// !!! 삭제된 함수: spawnVillain (이제 쥐와 개가 개별 함수로 관리) !!!
-// function spawnVillain(this: Phaser.Scene) { /* ... */ }
-
-
-// !!! 새로운 쥐 생성 관리 함수 !!!
 function spawnMouseVillain(this: Phaser.Scene) {
     if (gameOver) return;
 
@@ -246,16 +328,14 @@ function spawnMouseVillain(this: Phaser.Scene) {
 
     const activeMice = mice.countActive(true);
 
-    if (activeMice >= MAX_ACTIVE_MICE) { // 쥐 최대 개수 확인
+    if (activeMice >= MAX_ACTIVE_MICE) {
         console.log(`Max mice (${MAX_ACTIVE_MICE}) reached. Skipping mouse spawn.`);
         return;
     }
 
-    spawnMouse.call(this, mice, player); // 실제 쥐 생성 함수 호출
-    // console.log('Spawning a mouse (1s interval).'); // 이미 내부에서 로그를 남기므로 제거 또는 조정
+    spawnMouse.call(this, mice, player);
 }
 
-// !!! 새로운 개 생성 관리 함수 (기존 spawnVillain의 개 생성 부분 분리) !!!
 function spawnDogVillain(this: Phaser.Scene) {
     if (gameOver) return;
 
@@ -264,21 +344,19 @@ function spawnDogVillain(this: Phaser.Scene) {
 
     const activeDogs = dogs.countActive(true);
 
-    if (activeDogs >= MAX_ACTIVE_DOGS) { // 개 최대 개수 확인
+    if (activeDogs >= MAX_ACTIVE_DOGS) {
         console.log(`Max dogs (${MAX_ACTIVE_DOGS}) reached. Skipping dog spawn.`);
         return;
     }
 
-    spawnDog.call(this, dogs, player); // 실제 개 생성 함수 호출
-    // console.log('Spawning a dog (2s interval).'); // 이미 내부에서 로그를 남기므로 제거 또는 조정
+    spawnDog.call(this, dogs, player);
 }
-
 
 function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const edge = Phaser.Math.Between(0, 3);
     let x: number, y: number;
-    const gameWidth = this.game.config.width as number;
-    const gameHeight = this.game.config.height as number;
+    const gameWidth = this.physics.world.bounds.width;
+    const gameHeight = this.physics.world.bounds.height;
 
     switch (edge) {
         case 0: x = Phaser.Math.Between(0, gameWidth); y = -50; break;
@@ -300,8 +378,8 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
 function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const edge = Phaser.Math.Between(0, 3);
     let x: number, y: number;
-    const gameWidth = this.game.config.width as number;
-    const gameHeight = this.game.config.height as number;
+    const gameWidth = this.physics.world.bounds.width;
+    const gameHeight = this.physics.world.bounds.height;
 
     switch (edge) {
         case 0: x = Phaser.Math.Between(0, gameWidth); y = -50; break;
@@ -429,6 +507,9 @@ function update(this: Phaser.Scene) {
     const playerSpeed = BASE_PLAYER_SPEED;
     let isMovingForAnimation = false;
 
+    const dPadStates = isMobile ? (this.data.get('dPadStates') as { up: boolean, down: boolean, left: boolean, right: boolean }) : undefined;
+
+
     if (!isKnockedBack) {
         if (isMobile && this.input.pointer1.isDown && this.input.pointer2.isDown) {
             const currentPinchDistance = Phaser.Math.Distance.Between(
@@ -442,11 +523,23 @@ function update(this: Phaser.Scene) {
             } else {
                 let zoomFactor = currentPinchDistance / initialPinchDistance;
                 let newZoom = lastCameraZoom * zoomFactor;
-                newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ACTIVE_DOGS);
+                newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
                 this.cameras.main.setZoom(newZoom);
             }
             player.setVelocity(0);
             isMovingForAnimation = false;
+
+        } else if (isMobile && dPadStates && (dPadStates.up || dPadStates.down || dPadStates.left || dPadStates.right)) {
+            player.setVelocity(0);
+            if (dPadStates.up) player.setVelocityY(-playerSpeed);
+            if (dPadStates.down) player.setVelocityY(playerSpeed);
+            if (dPadStates.left) player.setVelocityX(-playerSpeed);
+            if (dPadStates.right) player.setVelocityX(playerSpeed);
+
+            if (player.body instanceof Phaser.Physics.Arcade.Body) {
+                player.body.velocity.normalize().scale(playerSpeed);
+            }
+            isMovingForAnimation = true;
 
         } else if (this.input.activePointer.isDown) {
             const canvas = this.game.canvas;
@@ -533,7 +626,6 @@ function update(this: Phaser.Scene) {
     energyBarBg.y = playerBottomY + textSpacing;
     energyBarFill.x = energyBarBg.x;
     energyBarFill.y = energyBarBg.y;
-
 
     mice.getChildren().forEach((mouseObject) => {
         const mouse = mouseObject as Phaser.Physics.Arcade.Sprite;
