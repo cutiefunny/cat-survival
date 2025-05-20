@@ -31,8 +31,7 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
         update: update
     },
     parent: 'game-container',
-    // !!! 변경된 부분: orientation 속성을 scale 밖으로 이동 !!!
-    orientation: Phaser.Scale.LANDSCAPE, // GameConfig의 직접 속성
+    // orientation 속성은 GameConfig에 직접 지정할 수 없습니다.
 
     scale: {
         mode: Phaser.Scale.RESIZE,
