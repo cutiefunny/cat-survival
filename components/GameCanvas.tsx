@@ -487,7 +487,7 @@ function update(this: Phaser.Scene) {
     const shopOpened = this.data.get('shopOpened') as boolean;
     const openShopModal = this.data.get('openShopModal') as ((score: number) => void) | undefined;
     
-    if (score >= 100 && !shopOpened) { 
+    if (score >= 50 && !shopOpened) { 
         this.data.set('shopOpened', true);
         this.physics.pause();
         if (openShopModal) {
