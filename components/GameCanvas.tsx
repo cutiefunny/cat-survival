@@ -442,7 +442,7 @@ function update(this: Phaser.Scene) {
             } else {
                 let zoomFactor = currentPinchDistance / initialPinchDistance;
                 let newZoom = lastCameraZoom * zoomFactor;
-                newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_MAX_ACTIVE_DOGS);
+                newZoom = Phaser.Math.Clamp(newZoom, MIN_ZOOM, MAX_ACTIVE_DOGS);
                 this.cameras.main.setZoom(newZoom);
             }
             player.setVelocity(0);
