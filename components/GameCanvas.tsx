@@ -9,8 +9,8 @@ function getGameDimensions() {
     if (typeof window !== 'undefined') {
         const maxWidth = 2400;
         const maxHeight = 1600;
-        const minWidth = 1200;
-        const minHeight = 1600;
+        const minWidth = 400;
+        const minHeight = 800;
         let width = Math.max(minWidth, Math.min(window.innerWidth, maxWidth));
         let height = Math.max(minHeight, Math.min(window.innerHeight, maxHeight));
 
@@ -102,7 +102,7 @@ function create(this: Phaser.Scene) {
 
     let finalPlayerScale;
     if (minWidthApplied) {
-        finalPlayerScale = 0.7;
+        finalPlayerScale = 0.5 * (isMobile ? 0.7 : 1.0);
     } else {
         finalPlayerScale = 0.5 * (isMobile ? 0.7 : 1.0);
     }
