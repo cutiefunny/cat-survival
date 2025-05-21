@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as Phaser from 'phaser';
 import ShopModal from './shopModal'; // ShopModal.tsx 파일 경로에 맞게 수정해주세요.
+import { SkillsProvider } from './SkillsContext'; // SkillsContext 임포트
 
 
 function getGameDimensions() {
@@ -60,7 +61,7 @@ const KNOCKBACK_DURATION_MS = 250;
 const INITIAL_PLAYER_ENERGY = 3;
 
 const BASE_PLAYER_SPEED = 200;
-const DOG_CHASE_SPEED = BASE_PLAYER_SPEED * 0.5;
+const DOG_CHASE_SPEED = BASE_PLAYER_SPEED * 0.3;
 
 const MOUSE_SPAWN_INTERVAL_MS = 1000;
 const MAX_ACTIVE_MICE = 30;
@@ -74,7 +75,7 @@ const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
 let skills: number[] = []; // skills 변수 유지
-skills.push(1); // 기본값으로 1 추가 (테스트용)
+//skills.push(1); // 기본값으로 1 추가 (테스트용)
 
 
 function preload(this: Phaser.Scene) {
@@ -214,6 +215,7 @@ function create(this: Phaser.Scene) {
     this.data.set('energyBarBg', energyBarBg);
     this.data.set('energyBarFill', energyBarFill);
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
+    this.data.set('skills', skills); // skills 배열을 씬 데이터에 저장
 
 
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
@@ -475,6 +477,7 @@ function update(this: Phaser.Scene) {
     const isKnockedBack = this.data.get('isKnockedBack') as boolean;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
+    skills = this.data.get('skills');
 
     if (!player || !cursors) {
         return;
@@ -485,14 +488,14 @@ function update(this: Phaser.Scene) {
 
     const score = this.data.get('score') as number;
     const shopOpened = this.data.get('shopOpened') as boolean;
-    const openShopModal = this.data.get('openShopModal') as ((score: number) => void) | undefined;
+    const openShopModal = this.data.get('openShopModal') as (score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
     
     if (score >= 50 && !shopOpened) { 
         this.data.set('shopOpened', true);
         this.physics.pause();
         if (openShopModal) {
             console.log("Phaser Scene Update: Calling openShopModal callback. Score:", score); 
-            openShopModal(score); 
+            openShopModal(score, skills);
         } else {
             console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data! This indicates a failure in passing the callback from React to Phaser."); 
         }
@@ -644,10 +647,10 @@ const GameCanvas: React.FC = () => {
             
             const initialDataForScene: {
                 minWidthApplied: boolean;
-                openShopModal: (score: number) => void;
+                openShopModal: (score: number, skills: number[]) => void;
             } = { // 타입을 명시적으로 지정
                 minWidthApplied: minWidthApplied,
-                openShopModal: (score: number) => { // 상점 모달을 여는 콜백
+                openShopModal: (score: number, skills: number[]) => { // 상점 모달을 여는 콜백
                     console.log("React: openShopModal callback called from Phaser. Score:", score); // React 측 로그
                     setShowShopModal(true);
                     setCurrentScore(score); // 현재 점수를 모달에 전달
@@ -719,10 +722,11 @@ const GameCanvas: React.FC = () => {
     };
 
     return (
-        <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            {/* 상점 모달 React 컴포넌트 렌더링 */}
-            <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
-        </div>
+        <SkillsProvider> {/* SkillsProvider로 감싸기 */}
+            <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
+            </div>
+        </SkillsProvider>
     );
 };
 

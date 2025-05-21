@@ -19,7 +19,7 @@ const ShopModal: React.FC<ShopModalProps> = ({ isVisible, onClose, score }) => {
             items.push({
                 id: 1,
                 name: '냥냥펀치1',
-                description: '냥냥펀치로 상대를 공격한다!',
+                description: '냥냥펀치로 상대를 밀어낸다!',
                 price: 50,
                 imageUrl: '/images/skill-punch.png',
             });
@@ -85,7 +85,7 @@ const ShopModal: React.FC<ShopModalProps> = ({ isVisible, onClose, score }) => {
         <p>현재 점수: {score}</p>
         {/* 상점 아이템들을 표시할 곳 */}
         <div style={{ display: 'flex', overflowX: 'auto', gap: '10px', padding: '10px' }}>
-          <Item items={availableItems} onUpgrade={() => {}} />
+          <Item items={availableItems} />
         </div>
         <button style={buttonStyle} onClick={onClose}>상점 닫기</button>
       </div>

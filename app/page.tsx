@@ -1,20 +1,54 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import React from 'react'; // React 임포트
+import React, { useState, useEffect } from 'react';
 
-// GameCanvas 컴포넌트를 동적으로 임포트하고 SSR을 비활성화합니다.
-// 이렇게 하면 이 컴포넌트와 그 안의 코드는 클라이언트 측에서만 로드되고 실행됩니다.
 const GameCanvas = dynamic(() => import('../components/GameCanvas'), {
-  ssr: false, // 서버 사이드 렌더링 비활성화
-  loading: () => <p>Loading game...</p>, // 게임 로딩 중 표시할 내용 (선택 사항)
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+      }}
+    >
+      <img src="/images/title.png" alt="Loading" />
+    </div>
+  ),
 });
 
 const GamePage = () => {
+  const [showTitle, setShowTitle] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowTitle(false);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <div>
-      {/* 동적으로 임포트된 GameCanvas 컴포넌트 사용 */}
+    <div
+      style={{
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+      }}
+    >
+      {showTitle ? (
+      <div>
+        <img src="/images/title.png" alt="Title" />
+        <p style={{ textAlign: 'center', marginTop: '10px' }}>
+          이 이미지는 스팀게임 '살아남아라 무도가'의 오마주로 제작되었습니다.
+        </p>
+      </div>
+      ) : (
       <GameCanvas />
+      )}
     </div>
   );
 };
