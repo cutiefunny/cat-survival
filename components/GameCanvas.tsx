@@ -69,13 +69,20 @@ const MAX_ACTIVE_MICE = 30;
 const DOG_SPAWN_INTERVAL_MS = 2000;
 const MAX_ACTIVE_DOGS = 20;
 
+const FISH_SPAWN_INTERVAL_MS = 5000; // 5초마다 물고기 아이템 생성
+const FISH_SPAWN_PROBABILITY = 0.3; // 30% 확률로 물고기 아이템 생성
+const MAX_ACTIVE_FISH = 2; // 최대 물고기 아이템 수
+
+const BUTTERFLY_SPAWN_INTERVAL_MS = 1000; // 1초마다 나비 생성 시도
+const BUTTERFLY_SPAWN_PROBABILITY = 0.1; // 10% 확률로 나비 생성
+const MAX_ACTIVE_BUTTERFLIES = 1; // 화면에 표시될 최대 나비 수
+const BUTTERFLY_REPEL_DISTANCE = 150; // 플레이어가 나비에게 다가갈 때 나비가 멀어지는 거리
+const BUTTERFLY_REPEL_FORCE = 100; // 나비가 멀어지는 힘 (속도)
+
 const ENERGY_BAR_WIDTH = 60;
 const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
-
-// let skills: number[] = []; // skills 변수 유지
-//skills.push(1); // 기본값으로 1 추가 (테스트용)
 
 
 function preload(this: Phaser.Scene) {
@@ -83,6 +90,10 @@ function preload(this: Phaser.Scene) {
     this.load.image('cat_punch', '/images/cat_punch.png'); // cat_punch 이미지 로드
     this.load.spritesheet('mouse_enemy_sprite', '/images/mouse_2frame_sprite.png', { frameWidth: 100, frameHeight: 64 });
     this.load.spritesheet('dog_enemy_sprite', '/images/dog_2frame_horizontal.png', { frameWidth: 100, frameHeight: 100 });
+    // 물고기 아이템 스프라이트 로드 (frameWidth, frameHeight 조정)
+    this.load.spritesheet('fish_item_sprite', '/images/fish_sprite_2frame.png', { frameWidth: 100, frameHeight: 100 }); // frameHeight를 100으로 수정
+    // 나비 아이템 스프라이트 로드 (사용자 수정 반영: frameHeight를 83으로 수정)
+    this.load.spritesheet('butterfly_sprite_3frame', '/images/butterfly_sprite_3frame.png', { frameWidth: 100, frameHeight: 83 });
 }
 
 function create(this: Phaser.Scene) {
@@ -133,8 +144,26 @@ function create(this: Phaser.Scene) {
         repeat: -1
     });
 
+    // 물고기 아이템 애니메이션 추가
+    this.anims.create({
+        key: 'fish_swim',
+        frames: this.anims.generateFrameNumbers('fish_item_sprite', { start: 0, end: 1 }),
+        frameRate: 4, // 물고기 움직임 속도
+        repeat: -1
+    });
+
+    // 나비 아이템 애니메이션 추가
+    this.anims.create({
+        key: 'butterfly_fly',
+        frames: this.anims.generateFrameNumbers('butterfly_sprite_3frame', { start: 0, end: 2 }),
+        frameRate: 8, // 나비 움직임 속도
+        repeat: -1
+    });
+
     const mice = this.physics.add.group();
     const dogs = this.physics.add.group();
+    const fishItems = this.physics.add.group(); // 물고기 아이템 그룹 생성
+    const butterflies = this.physics.add.group(); // 나비 아이템 그룹 생성
 
     this.time.addEvent({
         delay: MOUSE_SPAWN_INTERVAL_MS,
@@ -150,12 +179,30 @@ function create(this: Phaser.Scene) {
         loop: true
     });
 
+    // 물고기 아이템 생성 이벤트 추가
+    this.time.addEvent({
+        delay: FISH_SPAWN_INTERVAL_MS,
+        callback: spawnFishItem,
+        callbackScope: this,
+        loop: true
+    });
+
+    // 나비 아이템 생성 이벤트 추가
+    this.time.addEvent({
+        delay: BUTTERFLY_SPAWN_INTERVAL_MS,
+        callback: spawnButterflyVillain,
+        callbackScope: this,
+        loop: true
+    });
+
     const cursors = this.input.keyboard?.createCursorKeys();
     this.input.addPointer(1);
     this.input.addPointer(2);
 
     this.physics.add.collider(player, mice, hitMouse as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback, undefined, this);
     this.physics.add.collider(player, dogs, hitDog as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback, undefined, this);
+    this.physics.add.overlap(player, fishItems, collectFish as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback, undefined, this); // 물고기 아이템 충돌 처리
+    this.physics.add.overlap(player, butterflies, collectButterfly as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback, undefined, this); // 나비 아이템 충돌 처리
 
     this.physics.add.collider(mice, mice);
     this.physics.add.collider(dogs, dogs);
@@ -202,14 +249,30 @@ function create(this: Phaser.Scene) {
     gameOverText.setScrollFactor(0);
     gameOverText.setVisible(false);
 
+    // 재시작 버튼 생성
+    const restartButton = this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY + 100, // 게임 오버 텍스트 아래에 위치
+        'Restart Game',
+        { fontSize: '32px', color: '#0000ff', backgroundColor: '#cccccc', padding: { x: 20, y: 10 } }
+    );
+    restartButton.setOrigin(0.5);
+    restartButton.setScrollFactor(0);
+    restartButton.setInteractive(); // 클릭 가능하도록 설정
+    restartButton.setVisible(false); // 초기에는 보이지 않도록 설정
+    restartButton.on('pointerdown', () => restartGame.call(this)); // 클릭 시 restartGame 호출
+
     this.data.set('player', player);
     this.data.set('mice', mice);
     this.data.set('dogs', dogs);
+    this.data.set('fishItems', fishItems); // 물고기 아이템 그룹 씬 데이터에 저장
+    this.data.set('butterflies', butterflies); // 나비 아이템 그룹 씬 데이터에 저장
     this.data.set('cursors', cursors);
     this.data.set('score', 0);
     this.data.set('scoreText', scoreText);
     this.data.set('timerText', timerText);
     this.data.set('gameOverText', gameOverText);
+    this.data.set('restartButton', restartButton); // 재시작 버튼 씬 데이터에 저장
 
     this.data.set('isKnockedBack', false);
     this.data.set('energy', INITIAL_PLAYER_ENERGY);
@@ -242,6 +305,10 @@ function create(this: Phaser.Scene) {
         const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
         if (gameOverText) {
             gameOverText.setPosition(this.cameras.main.centerX, this.cameras.main.centerY);
+        }
+        const restartButton = this.data.get('restartButton') as Phaser.GameObjects.Text;
+        if (restartButton) {
+            restartButton.setPosition(this.cameras.main.centerX, this.cameras.main.centerY + 100);
         }
 
         const currentWorldBorder = this.data.get('worldBorder') as Phaser.GameObjects.Graphics;
@@ -312,6 +379,93 @@ function spawnDogVillain(this: Phaser.Scene) {
 
     spawnDog.call(this, dogs, player);
 }
+
+// 물고기 아이템 생성 함수
+function spawnFishItem(this: Phaser.Scene) {
+    if (gameOver) return;
+
+    const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group;
+    const activeFish = fishItems.countActive(true);
+
+    if (activeFish >= MAX_ACTIVE_FISH) {
+        // console.log(`Max fish items (${MAX_ACTIVE_FISH}) reached. Skipping fish item spawn.`);
+        return;
+    }
+
+    // 30% 확률로 물고기 아이템 생성
+    if (Math.random() < FISH_SPAWN_PROBABILITY) {
+        spawnFish.call(this, fishItems);
+    }
+
+    function spawnFish(this: Phaser.Scene, fishItems: Phaser.Physics.Arcade.Group) {
+        const gameWidth = this.physics.world.bounds.width;
+        const gameHeight = this.physics.world.bounds.height;
+
+        // 랜덤 위치 선정 (월드 바운드 내에서)
+        const x = Phaser.Math.Between(0, gameWidth);
+        const y = Phaser.Math.Between(0, gameHeight);
+
+        const fish = fishItems.create(x, y, 'fish_item_sprite') as Phaser.Physics.Arcade.Sprite;
+        fish.setCollideWorldBounds(false); // 월드 바운드 충돌 비활성화 (맵 밖으로 나가지 않도록)
+        fish.setImmovable(true); // 움직이지 않도록 설정
+        fish.setScale(0.4); // 크기 조정
+        fish.play('fish_swim'); // 물고기 애니메이션 재생
+    }
+
+    const gameWidth = this.physics.world.bounds.width;
+    const gameHeight = this.physics.world.bounds.height;
+
+    // 랜덤 위치 선정 (월드 바운드 내에서)
+    const x = Phaser.Math.Between(0, gameWidth);
+    const y = Phaser.Math.Between(0, gameHeight);
+
+    const fish = fishItems.create(x, y, 'fish_item_sprite') as Phaser.Physics.Arcade.Sprite;
+    fish.setCollideWorldBounds(false); // 월드 바운드 충돌 비활성화 (맵 밖으로 나가지 않도록)
+    fish.setImmovable(true); // 움직이지 않도록 설정
+    fish.setScale(0.4); // 크기 조정
+    fish.play('fish_swim'); // 물고기 애니메이션 재생
+}
+
+// 나비 아이템 생성 시도 함수
+function spawnButterflyVillain(this: Phaser.Scene) {
+    if (gameOver) return;
+    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
+    // 화면에 나비가 MAX_ACTIVE_BUTTERFLIES (1개) 이상 있으면 생성하지 않음
+    if (butterflies.countActive(true) >= MAX_ACTIVE_BUTTERFLIES) {
+        return;
+    }
+    // 50% 확률로 나비 생성
+    if (Math.random() < BUTTERFLY_SPAWN_PROBABILITY) {
+        spawnButterfly.call(this, butterflies);
+    }
+}
+
+// 나비 아이템 생성 함수
+function spawnButterfly(this: Phaser.Scene, butterflies: Phaser.Physics.Arcade.Group) {
+    const gameWidth = this.physics.world.bounds.width;
+    const gameHeight = this.physics.world.bounds.height;
+
+    // 랜덤 위치 선정 (월드 바운드 내에서)
+    const x = Phaser.Math.Between(0, gameWidth);
+    const y = Phaser.Math.Between(0, gameHeight);
+
+    const butterfly = butterflies.create(x, y, 'butterfly_sprite_3frame') as Phaser.Physics.Arcade.Sprite;
+    butterfly.setCollideWorldBounds(true); // 월드 경계에 닿으면 튕기도록 설정
+    butterfly.setBounce(1); // 완전 반사
+    butterfly.setScale(0.5); // 크기 조정
+    butterfly.play('butterfly_fly', true); // 나비 애니메이션 재생
+
+    // 초기 랜덤 속도 설정
+    const angle = Phaser.Math.Between(0, 360);
+    const speed = Phaser.Math.Between(50, 150); // 랜덤 속도 범위
+    const butterflyBody = butterfly.body as Phaser.Physics.Arcade.Body;
+    this.physics.velocityFromAngle(angle, speed, butterflyBody.velocity);
+
+    // 나비의 불규칙한 움직임을 위한 타이머 데이터 설정 (1초~3초에서 0.5초~1.5초로 변경)
+    butterfly.setData('moveTimer', 0);
+    butterfly.setData('nextMoveTime', Phaser.Math.Between(200, 800)); // 0.2초에서 0.8초 사이마다 방향 변경
+}
+
 
 function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const edge = Phaser.Math.Between(0, 3);
@@ -401,7 +555,8 @@ function hitDog(
     // !!! MODIFIED START: Conditional knockback based on skills !!!
     // skills 배열이 number[] 타입이므로 1을 숫자로 사용합니다.
     let skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
-    if (skills.includes(1) && dotProduct < 0) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
+    const isMovingForAnimation = this.data.get('isMovingForAnimation') as boolean;
+    if (skills.includes(1) && dotProduct < 0 && isMovingForAnimation) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
         // Skill '1' active: knock back the dog, not the player
         if (player.body && dog.body) {
             const direction = new Phaser.Math.Vector2(dog.x - player.x, dog.y - player.y).normalize();
@@ -462,6 +617,61 @@ function hitDog(
     }
 }
 
+// 물고기 아이템 획득 함수
+function collectFish(
+    this: Phaser.Scene,
+    player: Phaser.Physics.Arcade.Sprite,
+    fish: Phaser.Physics.Arcade.Sprite
+) {
+    if (gameOver) return;
+
+    console.log('Fish collected! Restoring energy.');
+
+    // 물고기 아이템 비활성화 및 파괴
+    fish.disableBody(true, true);
+
+    let energy = this.data.get('energy');
+    if (energy < INITIAL_PLAYER_ENERGY) { // 최대 에너지 이상으로 회복되지 않도록
+        energy++;
+        this.data.set('energy', energy);
+
+        // 에너지 바 업데이트
+        const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
+        const newWidth = (energy / INITIAL_PLAYER_ENERGY) * ENERGY_BAR_WIDTH;
+
+        energyBarFill.clear();
+        energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
+        energyBarFill.fillRect(0, 0, newWidth, ENERGY_BAR_HEIGHT);
+    }
+}
+
+// 나비 아이템 획득 함수
+function collectButterfly(
+    this: Phaser.Scene,
+    player: Phaser.Physics.Arcade.Sprite,
+    butterfly: Phaser.Physics.Arcade.Sprite
+) {
+    if (gameOver) return;
+
+    console.log('Butterfly collected! Restoring all energy.');
+
+    // 나비 아이템 비활성화 및 파괴
+    butterfly.disableBody(true, true);
+
+    // 모든 에너지 회복
+    let energy = INITIAL_PLAYER_ENERGY;
+    this.data.set('energy', energy);
+
+    // 에너지 바 업데이트
+    const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
+    const newWidth = (energy / INITIAL_PLAYER_ENERGY) * ENERGY_BAR_WIDTH;
+
+    energyBarFill.clear();
+    energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
+    energyBarFill.fillRect(0, 0, newWidth, ENERGY_BAR_HEIGHT);
+}
+
+
 function endGame(this: Phaser.Scene) {
     if (gameOver) return;
     gameOver = true;
@@ -476,14 +686,61 @@ function endGame(this: Phaser.Scene) {
 
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
+    const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group; // 물고기 아이템 그룹 가져오기
+    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group; // 나비 아이템 그룹 가져오기
+    const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
+    const restartButton = this.data.get('restartButton') as Phaser.GameObjects.Text;
+
+
     if (mice) mice.getChildren().forEach((mouse) => (mouse.body as any)?.stop());
     if (dogs) dogs.getChildren().forEach((dog) => (dog.body as any)?.stop());
+    if (fishItems) fishItems.getChildren().forEach((fish) => (fish.body as any)?.stop()); // 물고기 아이템도 정지
+    if (butterflies) butterflies.getChildren().forEach((butterfly) => (butterfly.body as any)?.stop()); // 나비 아이템도 정지
 
-    const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
     if (gameOverText) {
         gameOverText.setVisible(true);
     }
+    if (restartButton) {
+        restartButton.setVisible(true); // 재시작 버튼 보이게
+    }
 }
+
+// 게임 재시작 함수
+function restartGame(this: Phaser.Scene) {
+    console.log('Restarting game...');
+    gameOver = false;
+    elapsedTime = 0;
+    initialPinchDistance = 0;
+    lastCameraZoom = 1;
+
+    // 게임 상태 초기화
+    this.data.set('score', 0);
+    this.data.set('energy', INITIAL_PLAYER_ENERGY);
+    this.data.set('isKnockedBack', false);
+    this.data.set('shopOpened', false);
+    this.data.set('skills', []); // 스킬도 초기화
+
+    // UI 요소 숨기기
+    const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
+    const restartButton = this.data.get('restartButton') as Phaser.GameObjects.Text;
+    if (gameOverText) gameOverText.setVisible(false);
+    if (restartButton) restartButton.setVisible(false);
+
+    // 모든 그룹의 자식 객체 파괴 (씬 재시작 전에 클린업)
+    const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
+    const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
+    const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group;
+    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
+
+    if (mice) mice.clear(true, true); // true, true는 자식 객체를 비활성화하고 파괴
+    if (dogs) dogs.clear(true, true);
+    if (fishItems) fishItems.clear(true, true);
+    if (butterflies) butterflies.clear(true, true);
+
+    // 씬 재시작
+    this.scene.restart();
+}
+
 
 function update(this: Phaser.Scene) {
     if (gameOver) {
@@ -496,6 +753,7 @@ function update(this: Phaser.Scene) {
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
+    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group; // 나비 그룹 가져오기
 
     if (!player || !cursors) {
         return;
@@ -538,6 +796,7 @@ function update(this: Phaser.Scene) {
             }
             player.setVelocity(0);
             isMovingForAnimation = false;
+            this.data.set('isMovingForAnimation', false);
         }
         else if (this.input.activePointer.isDown) {
             const canvas = this.game.canvas;
@@ -565,8 +824,10 @@ function update(this: Phaser.Scene) {
                     player.body.stop();
                 }
                 isMovingForAnimation = false;
+                this.data.set('isMovingForAnimation', false);
             } else {
                 isMovingForAnimation = true;
+                this.data.set('isMovingForAnimation', true);
             }
         }
         else if (cursors.left.isDown || cursors.right.isDown || cursors.up.isDown || cursors.down.isDown) {
@@ -587,20 +848,25 @@ function update(this: Phaser.Scene) {
                 player.body.velocity.normalize().scale(playerSpeed);
             }
             isMovingForAnimation = true;
+            this.data.set('isMovingForAnimation', true);
         }
         else {
             if (player.body && Math.abs(player.body.velocity.x) < 10 && Math.abs(player.body.velocity.y) < 10) {
                 player.setVelocity(0);
                 isMovingForAnimation = false;
+                this.data.set('isMovingForAnimation', false);
             } else {
                 isMovingForAnimation = true; // 넉백 잔여 속도 등으로 계속 움직이는 경우
+                this.data.set('isMovingForAnimation', true);
             }
         }
     } else {
         if (player.body && (Math.abs(player.body.velocity.x) > 10 || Math.abs(player.body.velocity.y) > 10)) {
             isMovingForAnimation = true;
+            this.data.set('isMovingForAnimation', true);
         } else {
             isMovingForAnimation = false;
+            this.data.set('isMovingForAnimation', false);
         }
     }
 
@@ -645,6 +911,45 @@ function update(this: Phaser.Scene) {
                 dog.setFlipX(false);
             } else if (dog.body.velocity.x > 0) {
                 dog.setFlipX(true);
+            }
+        }
+    });
+
+    // 나비 불규칙 비행 로직
+    butterflies.getChildren().forEach((butterflyObject) => {
+        const butterfly = butterflyObject as Phaser.Physics.Arcade.Sprite;
+        // butterfly.active와 butterfly.body가 모두 존재할 때만 로직 실행
+        if (butterfly.active && butterfly.body) {
+            const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite; // 플레이어 객체 가져오기
+            const distanceToPlayer = Phaser.Math.Distance.Between(player.x, player.y, butterfly.x, butterfly.y);
+
+            if (distanceToPlayer < BUTTERFLY_REPEL_DISTANCE) {
+                // 플레이어에게서 멀어지는 방향 계산
+                const direction = new Phaser.Math.Vector2(butterfly.x - player.x, butterfly.y - player.y).normalize();
+                butterfly.body.velocity.x = direction.x * BUTTERFLY_REPEL_FORCE;
+                butterfly.body.velocity.y = direction.y * BUTTERFLY_REPEL_FORCE;
+                // 방향 전환 타이머 초기화 (repel 중에는 불규칙 비행 로직이 바로 적용되지 않도록)
+            } else {
+                // 기존 불규칙 비행 로직
+                let moveTimer = butterfly.getData('moveTimer') as number;
+                let nextMoveTime = butterfly.getData('nextMoveTime') as number;
+
+                moveTimer += this.game.loop.delta; // 델타 타임 누적
+
+                if (moveTimer >= nextMoveTime) {
+                    const angle = Phaser.Math.Between(0, 360); // 0도에서 360도 사이 랜덤 각도
+                    const speed = Phaser.Math.Between(50, 150); // 50에서 150 사이 랜덤 속도
+                    this.physics.velocityFromAngle(angle, speed, butterfly.body.velocity); // 새로운 속도 적용
+                    
+                    butterfly.setData('moveTimer', 0); // 타이머 초기화
+                    butterfly.setData('nextMoveTime', Phaser.Math.Between(200, 800)); // 다음 방향 변경까지 랜덤 시간 설정 (0.2초에서 0.8초)
+                }
+            }
+            // 나비의 x축 속도에 따라 스프라이트 뒤집기
+            if (butterfly.body.velocity.x < 0) {
+                butterfly.setFlipX(false);
+            } else if (butterfly.body.velocity.x > 0) {
+                butterfly.setFlipX(true);
             }
         }
     });
