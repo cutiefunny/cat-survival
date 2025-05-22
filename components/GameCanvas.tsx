@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as Phaser from 'phaser';
 import ShopModal from './shopModal'; // ShopModal.tsx 파일 경로에 맞게 수정해주세요.
-import { SkillsProvider } from './SkillsContext'; // SkillsContext 임포트
+import { SkillsProvider, useSkills } from './SkillsContext'; // SkillsContext 임포트
 
 
 function getGameDimensions() {
@@ -74,7 +74,7 @@ const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
-let skills: number[] = []; // skills 변수 유지
+// let skills: number[] = []; // skills 변수 유지
 //skills.push(1); // 기본값으로 1 추가 (테스트용)
 
 
@@ -92,6 +92,7 @@ function create(this: Phaser.Scene) {
     lastCameraZoom = 1;
 
     this.cameras.main.setBackgroundColor('#ffffff');
+    generateBackground.call(this);
 
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
 
@@ -215,7 +216,7 @@ function create(this: Phaser.Scene) {
     this.data.set('energyBarBg', energyBarBg);
     this.data.set('energyBarFill', energyBarFill);
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
-    this.data.set('skills', skills); // skills 배열을 씬 데이터에 저장
+    this.data.set('skills', []); // skills 배열을 씬 데이터에 저장
 
 
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
@@ -224,7 +225,7 @@ function create(this: Phaser.Scene) {
     this.physics.world.setBounds(0, 0, width, height);
 
     const worldBorder = this.add.graphics();
-    worldBorder.lineStyle(4, 0xff0000, 1);
+    // worldBorder.lineStyle(4, 0xff0000, 1);
     worldBorder.strokeRect(0, 0, width, height);
     this.data.set('worldBorder', worldBorder);
     
@@ -247,7 +248,7 @@ function create(this: Phaser.Scene) {
         const { width: newWidth, height: newHeight } = getGameDimensions();
 
         currentWorldBorder.clear();
-        currentWorldBorder.lineStyle(4, 0xff0000, 1);
+        // currentWorldBorder.lineStyle(4, 0xff0000, 1);
         currentWorldBorder.strokeRect(0, 0, newWidth, newHeight);
 
         this.physics.world.setBounds(0, 0, newWidth, newHeight);
@@ -257,6 +258,22 @@ function create(this: Phaser.Scene) {
     });
 
     console.log('Initial Scale Factors:', this.scale.displayScale.x, this.scale.displayScale.y);
+}
+
+function generateBackground(this: Phaser.Scene) {
+    const width = this.game.config.width as number;
+    const height = this.game.config.height as number;
+
+    for (let x = 0; x < width; x += 32) {
+        for (let y = 0; y < height; y += 32) {
+            const hue = Phaser.Math.FloatBetween(0.25, 0.40); // 녹색 범위: 0.25 ~ 0.40
+            const saturation = Phaser.Math.FloatBetween(0.1, 0.3); // 채도 감소
+            const lightness = Phaser.Math.FloatBetween(0.3, 0.4); // 명도 감소
+            
+            const color = Phaser.Display.Color.HSLToColor(hue, saturation, lightness).color;
+            this.add.rectangle(x, y, 32, 32, color);
+        }
+    }
 }
 
 // CustomDogSprite 인터페이스 (dog에 isKnockedBack 속성 추가를 위함)
@@ -383,6 +400,7 @@ function hitDog(
     const dotProduct = (dog.x - player.x) * (player.flipX ? -1 : 1);
     // !!! MODIFIED START: Conditional knockback based on skills !!!
     // skills 배열이 number[] 타입이므로 1을 숫자로 사용합니다.
+    let skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
     if (skills.includes(1) && dotProduct < 0) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
         // Skill '1' active: knock back the dog, not the player
         if (player.body && dog.body) {
@@ -477,7 +495,7 @@ function update(this: Phaser.Scene) {
     const isKnockedBack = this.data.get('isKnockedBack') as boolean;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
-    skills = this.data.get('skills');
+    const skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
 
     if (!player || !cursors) {
         return;
@@ -492,7 +510,7 @@ function update(this: Phaser.Scene) {
     
     if (score >= 50 && !shopOpened) { 
         this.data.set('shopOpened', true);
-        this.physics.pause();
+        
         if (openShopModal) {
             console.log("Phaser Scene Update: Calling openShopModal callback. Score:", score); 
             openShopModal(score, skills);
@@ -634,9 +652,12 @@ function update(this: Phaser.Scene) {
 
 const GameCanvas: React.FC = () => {
     const gameContainerRef = useRef<HTMLDivElement>(null);
+    const gameSceneRef = useRef<Phaser.Scene | null>(null); // gameScene ref 생성
     const gameRef = useRef<Phaser.Game | null>(null);
     const [showShopModal, setShowShopModal] = useState(false);
     const [currentScore, setCurrentScore] = useState(0);
+    const { skills } = useSkills(); // skills 배열을 React Context에서 가져옴
+    console.log('GameCanvas: skills from context:', skills); // skills 배열 확인
 
     useEffect(() => {
         const isClient = typeof window !== 'undefined';
@@ -647,15 +668,15 @@ const GameCanvas: React.FC = () => {
             
             const initialDataForScene: {
                 minWidthApplied: boolean;
-                openShopModal: (score: number, skills: number[]) => void;
-            } = { // 타입을 명시적으로 지정
+                openShopModal: (score: number, skills: number[], closeShop: () => void) => void; // closeShop 추가
+            } = {
                 minWidthApplied: minWidthApplied,
-                openShopModal: (score: number, skills: number[]) => { // 상점 모달을 여는 콜백
-                    console.log("React: openShopModal callback called from Phaser. Score:", score); // React 측 로그
+                openShopModal: (score: number, skills: number[], closeShop: () => void) => { // closeShop 받음
+                    console.log("React: openShopModal callback called from Phaser. Score:", score);
                     setShowShopModal(true);
-                    setCurrentScore(score); // 현재 점수를 모달에 전달
+                    setCurrentScore(score);
                     if (gameRef.current) {
-                        gameRef.current.scene.pause('MainScene'); // 씬 키 'MainScene' 사용
+                        gameRef.current.scene.pause('MainScene');
                     }
                 },
             };
@@ -679,12 +700,14 @@ const GameCanvas: React.FC = () => {
             newGame.events.on(Phaser.Core.Events.READY, () => {
                 console.log("Phaser Game is READY. Attempting to get scene 'MainScene' and set data.");
                 const gameScene = newGame.scene.getScene('MainScene'); // 씬 키로 씬 가져오기
+                gameSceneRef.current = gameScene; // gameScene ref에 저장
 
                 if (gameScene) {
                     console.log("Successfully retrieved 'MainScene'. Setting data directly on scene.data.");
                     // minWidthApplied와 openShopModal 콜백을 씬의 data manager에 직접 설정
                     gameScene.data.set('minWidthApplied', initialDataForScene.minWidthApplied);
                     gameScene.data.set('openShopModal', initialDataForScene.openShopModal);
+                    gameScene.data.set('skills', skills); // 초기 skills 값 저장 (React 컴포넌트의 skills)
                     console.log("Scene data for shop modal set successfully.");
                 } else {
                     console.error("CRITICAL ERROR: 'MainScene' not found after game ready event. Shop modal will not function.");
@@ -714,6 +737,13 @@ const GameCanvas: React.FC = () => {
         };
     }, []); // 의존성 배열에 아무것도 없으므로 컴포넌트 마운트 시 한 번만 실행됩니다.
 
+    useEffect(() => {
+        if (gameSceneRef.current) {
+            gameSceneRef.current.data.set('skills', skills);
+            console.log('Phaser scene skills updated:', skills);
+        }
+    }, [skills]);
+
     const closeShopModal = () => {
         setShowShopModal(false);
         if (gameRef.current) {
@@ -722,11 +752,9 @@ const GameCanvas: React.FC = () => {
     };
 
     return (
-        <SkillsProvider> {/* SkillsProvider로 감싸기 */}
-            <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
-            </div>
-        </SkillsProvider>
+        <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
+        </div>
     );
 };
 

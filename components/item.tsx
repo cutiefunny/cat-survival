@@ -11,14 +11,16 @@ interface Item {
 
 interface ItemsProps {
     items: Item[];
-    // onUpgrade: (skill: number) => void; // 더 이상 필요 없음
+    onClose: () => void; // onClose 함수 추가
 }
 
-const Items: React.FC<ItemsProps> = ({ items }) => {
+const Items: React.FC<ItemsProps> = ({ items, onClose }) => {
     const { addSkill } = useSkills(); // Context에서 addSkill 함수 가져오기
 
     const handleUpgradeClick = (skill: number) => {
+        console.log('handleUpgradeClick called with skill:', skill);
         addSkill(skill); // Context를 통해 skills 배열 업데이트
+        onClose(); // 아이템 클릭 시 상점 닫기
     };
 
     return (

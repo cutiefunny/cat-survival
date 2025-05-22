@@ -85,7 +85,7 @@ const ShopModal: React.FC<ShopModalProps> = ({ isVisible, onClose, score }) => {
         <p>현재 점수: {score}</p>
         {/* 상점 아이템들을 표시할 곳 */}
         <div style={{ display: 'flex', overflowX: 'auto', gap: '10px', padding: '10px' }}>
-          <Item items={availableItems} />
+          <Item items={availableItems} onClose={onClose} />
         </div>
         <button style={buttonStyle} onClick={onClose}>상점 닫기</button>
       </div>

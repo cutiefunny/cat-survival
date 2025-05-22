@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect } from 'react';
+import { SkillsProvider } from '../components/SkillsContext';
 
 const GameCanvas = dynamic(() => import('../components/GameCanvas'), {
   ssr: false,
@@ -41,13 +42,15 @@ const GamePage = () => {
     >
       {showTitle ? (
       <div>
-        <img src="/images/title.png" alt="Title" />
-        <p style={{ textAlign: 'center', marginTop: '10px' }}>
-          이 이미지는 스팀게임 '살아남아라 무도가'의 오마주로 제작되었습니다.
-        </p>
+      <img src="/images/title.png" alt="Title" />
+      <p style={{ textAlign: 'center', marginTop: '10px' }}>
+        이 이미지는 스팀게임 '살아남아라 무도가'의 오마주로 제작되었습니다.
+      </p>
       </div>
       ) : (
-      <GameCanvas />
+      <SkillsProvider>
+        <GameCanvas />
+      </SkillsProvider>
       )}
     </div>
   );

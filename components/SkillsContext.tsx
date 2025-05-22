@@ -15,8 +15,13 @@ export const SkillsProvider: React.FC<SkillsProviderProps> = ({ children }) => {
   const [skills, setSkills] = useState<number[]>([]);
 
   const addSkill = (skill: number) => {
-    setSkills(prevSkills => [...prevSkills, skill]);
-  };
+    console.log('addSkill called with skill:', skill);
+    setSkills(prevSkills => {
+        const updatedSkills = [...prevSkills, skill];
+        console.log('Skills updated:', updatedSkills);
+        return updatedSkills;
+    });
+};
 
   const value: SkillsContextType = { skills, addSkill };
 
