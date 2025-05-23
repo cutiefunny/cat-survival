@@ -84,6 +84,22 @@ const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
+// 무한 맵 관련 상수
+const WORLD_BOUNDS_SIZE = 100000; // 물리 세계의 매우 큰 경계
+const TILE_SIZE = 32; // 개별 배경 타일의 크기
+const CHUNK_DIMENSIONS = 20; // 한 청크에 포함될 타일의 개수 (20x20 타일)
+const CHUNK_SIZE_PX = CHUNK_DIMENSIONS * TILE_SIZE; // 한 청크의 실제 픽셀 크기
+const GENERATION_BUFFER_CHUNKS = 2; // 플레이어 주변 몇 개의 청크를 미리 생성할지 (예: 2는 5x5 청크 그리드를 생성)
+
+// 배경 타일 색상 배열 (기존 generateBackground 로직 활용)
+const TILE_COLORS: number[] = [];
+for (let i = 0; i < 10; i++) { // 10가지 색상 변형
+    const hue = Phaser.Math.FloatBetween(0.25, 0.40); // 녹색 범위
+    const saturation = Phaser.Math.FloatBetween(0.1, 0.3); // 채도 감소
+    const lightness = Phaser.Math.FloatBetween(0.3, 0.4); // 명도 감소
+    TILE_COLORS.push(Phaser.Display.Color.HSLToColor(hue, saturation, lightness).color);
+}
+
 
 function preload(this: Phaser.Scene) {
     this.load.spritesheet('player_sprite', '/images/cat_walk_3frame_sprite.png', { frameWidth: 100, frameHeight: 100 });
@@ -103,15 +119,20 @@ function create(this: Phaser.Scene) {
     lastCameraZoom = 1;
 
     this.cameras.main.setBackgroundColor('#ffffff');
-    generateBackground.call(this);
+    // generateBackground.call(this); // 무한 맵으로 대체되므로 제거
+
+    // 물리 세계 경계를 매우 크게 설정하여 무한 맵처럼 작동하도록 함
+    this.physics.world.setBounds(0, 0, WORLD_BOUNDS_SIZE, WORLD_BOUNDS_SIZE);
+
 
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
 
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
 
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
-    player.setCollideWorldBounds(true);
+    // player.setCollideWorldBounds(true); // 플레이어가 월드 경계에 닿으면 멈추도록 -> 무한 이동을 위해 제거
     player.setDrag(500);
+    player.setDepth(1); // 플레이어 depth 설정
 
     let finalPlayerScale;
     if (minWidthApplied) {
@@ -210,6 +231,7 @@ function create(this: Phaser.Scene) {
 
     const scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '16px', color: '#000000' });
     scoreText.setOrigin(0.5);
+    scoreText.setDepth(2); // UI는 가장 위에 표시
 
     const timerText = this.add.text(
         0, 0,
@@ -218,14 +240,17 @@ function create(this: Phaser.Scene) {
     );
     timerText.setOrigin(0.5);
     timerText.setVisible(false);
+    timerText.setDepth(2); // UI는 가장 위에 표시
 
     const energyBarBg = this.add.graphics();
     energyBarBg.fillStyle(ENERGY_BAR_COLOR_BG, 0.8);
     energyBarBg.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
+    energyBarBg.setDepth(2); // UI는 가장 위에 표시
 
     const energyBarFill = this.add.graphics();
     energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
     energyBarFill.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
+    energyBarFill.setDepth(2); // UI는 가장 위에 표시
 
     this.time.addEvent({
         delay: 1000,
@@ -248,6 +273,7 @@ function create(this: Phaser.Scene) {
     gameOverText.setOrigin(0.5);
     gameOverText.setScrollFactor(0);
     gameOverText.setVisible(false);
+    gameOverText.setDepth(3); // 게임 오버 UI는 최상단
 
     // 재시작 버튼 생성
     const restartButton = this.add.text(
@@ -261,6 +287,7 @@ function create(this: Phaser.Scene) {
     restartButton.setInteractive(); // 클릭 가능하도록 설정
     restartButton.setVisible(false); // 초기에는 보이지 않도록 설정
     restartButton.on('pointerdown', () => restartGame.call(this)); // 클릭 시 restartGame 호출
+    restartButton.setDepth(3); // 재시작 버튼도 최상단
 
     this.data.set('player', player);
     this.data.set('mice', mice);
@@ -281,16 +308,21 @@ function create(this: Phaser.Scene) {
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
     this.data.set('skills', []); // skills 배열을 씬 데이터에 저장
 
+    // generatedChunks Set을 먼저 초기화합니다.
+    this.data.set('generatedChunks', new Set<string>());
+    // 초기 맵 청크 생성
+    generateSurroundingChunks.call(this, player.x, player.y);
+
 
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
 
     const { width, height } = getGameDimensions();
-    this.physics.world.setBounds(0, 0, width, height);
+    // this.physics.world.setBounds(0, 0, width, height); // 무한 맵으로 대체되므로 제거
 
-    const worldBorder = this.add.graphics();
-    // worldBorder.lineStyle(4, 0xff0000, 1);
-    worldBorder.strokeRect(0, 0, width, height);
-    this.data.set('worldBorder', worldBorder);
+    // worldBorder도 무한 맵에서는 의미가 없으므로 제거
+    // const worldBorder = this.add.graphics();
+    // worldBorder.strokeRect(0, 0, width, height);
+    // this.data.set('worldBorder', worldBorder);
     
     // D-Pad 컨트롤러 생성 로직 (현재는 제거된 상태)
     // if (isMobile) { ... }
@@ -311,14 +343,12 @@ function create(this: Phaser.Scene) {
             restartButton.setPosition(this.cameras.main.centerX, this.cameras.main.centerY + 100);
         }
 
-        const currentWorldBorder = this.data.get('worldBorder') as Phaser.GameObjects.Graphics;
-        const { width: newWidth, height: newHeight } = getGameDimensions();
-
-        currentWorldBorder.clear();
-        // currentWorldBorder.lineStyle(4, 0xff0000, 1);
-        currentWorldBorder.strokeRect(0, 0, newWidth, newHeight);
-
-        this.physics.world.setBounds(0, 0, newWidth, newHeight);
+        // 월드 경계는 고정되어 있으므로 리사이즈 시 업데이트할 필요 없음
+        // const currentWorldBorder = this.data.get('worldBorder') as Phaser.GameObjects.Graphics;
+        // const { width: newWidth, height: newHeight } = getGameDimensions();
+        // currentWorldBorder.clear();
+        // currentWorldBorder.strokeRect(0, 0, newWidth, newHeight);
+        // this.physics.world.setBounds(0, 0, newWidth, newHeight);
 
         // D-Pad 버튼 위치 조정 로직 (현재는 제거된 상태)
         // if (isMobile) { ... }
@@ -327,21 +357,50 @@ function create(this: Phaser.Scene) {
     console.log('Initial Scale Factors:', this.scale.displayScale.x, this.scale.displayScale.y);
 }
 
-function generateBackground(this: Phaser.Scene) {
-    const width = this.game.config.width as number;
-    const height = this.game.config.height as number;
+/**
+ * 특정 청크 좌표에 배경 타일을 생성하는 함수.
+ * 이미 생성된 청크는 다시 생성하지 않습니다.
+ */
+function generateTileChunk(this: Phaser.Scene, chunkX: number, chunkY: number) {
+    const generatedChunks = this.data.get('generatedChunks') as Set<string>;
+    const chunkKey = `${chunkX}_${chunkY}`;
 
-    for (let x = 0; x < width; x += 32) {
-        for (let y = 0; y < height; y += 32) {
-            const hue = Phaser.Math.FloatBetween(0.25, 0.40); // 녹색 범위: 0.25 ~ 0.40
-            const saturation = Phaser.Math.FloatBetween(0.1, 0.3); // 채도 감소
-            const lightness = Phaser.Math.FloatBetween(0.3, 0.4); // 명도 감소
+    if (generatedChunks.has(chunkKey)) {
+        return; // 이미 생성된 청크
+    }
+    generatedChunks.add(chunkKey);
+
+    const startWorldX = chunkX * CHUNK_SIZE_PX;
+    const startWorldY = chunkY * CHUNK_SIZE_PX;
+
+    for (let x = 0; x < CHUNK_DIMENSIONS; x++) {
+        for (let y = 0; y < CHUNK_DIMENSIONS; y++) {
+            const worldX = startWorldX + x * TILE_SIZE;
+            const worldY = startWorldY + y * TILE_SIZE;
             
-            const color = Phaser.Display.Color.HSLToColor(hue, saturation, lightness).color;
-            this.add.rectangle(x, y, 32, 32, color);
+            // 랜덤 색상 선택
+            const colorIndex = Phaser.Math.Between(0, TILE_COLORS.length - 1);
+            const color = TILE_COLORS[colorIndex];
+            this.add.rectangle(worldX, worldY, TILE_SIZE, TILE_SIZE, color).setOrigin(0, 0).setDepth(0); // depth 설정
         }
     }
 }
+
+/**
+ * 플레이어 주변의 청크들을 생성하는 함수.
+ * 플레이어가 이동함에 따라 호출되어 새로운 맵 영역을 동적으로 로드합니다.
+ */
+function generateSurroundingChunks(this: Phaser.Scene, worldX: number, worldY: number) {
+    const currentChunkX = Math.floor(worldX / CHUNK_SIZE_PX);
+    const currentChunkY = Math.floor(worldY / CHUNK_SIZE_PX);
+
+    for (let i = currentChunkX - GENERATION_BUFFER_CHUNKS; i <= currentChunkX + GENERATION_BUFFER_CHUNKS; i++) {
+        for (let j = currentChunkY - GENERATION_BUFFER_CHUNKS; j <= currentChunkY + GENERATION_BUFFER_CHUNKS; j++) {
+            generateTileChunk.call(this, i, j);
+        }
+    }
+}
+
 
 // CustomDogSprite 인터페이스 (dog에 isKnockedBack 속성 추가를 위함)
 interface CustomDogSprite extends Phaser.Physics.Arcade.Sprite {
@@ -394,36 +453,21 @@ function spawnFishItem(this: Phaser.Scene) {
 
     // 30% 확률로 물고기 아이템 생성
     if (Math.random() < FISH_SPAWN_PROBABILITY) {
-        spawnFish.call(this, fishItems);
-    }
-
-    function spawnFish(this: Phaser.Scene, fishItems: Phaser.Physics.Arcade.Group) {
         const gameWidth = this.physics.world.bounds.width;
         const gameHeight = this.physics.world.bounds.height;
 
-        // 랜덤 위치 선정 (월드 바운드 내에서)
-        const x = Phaser.Math.Between(0, gameWidth);
-        const y = Phaser.Math.Between(0, gameHeight);
+        // 랜덤 위치 선정 (현재 카메라 뷰 내에서)
+        const camera = this.cameras.main;
+        const x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right);
+        const y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom);
 
         const fish = fishItems.create(x, y, 'fish_item_sprite') as Phaser.Physics.Arcade.Sprite;
         fish.setCollideWorldBounds(false); // 월드 바운드 충돌 비활성화 (맵 밖으로 나가지 않도록)
         fish.setImmovable(true); // 움직이지 않도록 설정
         fish.setScale(0.4); // 크기 조정
         fish.play('fish_swim'); // 물고기 애니메이션 재생
+        fish.setDepth(1); // 물고기 depth 설정
     }
-
-    const gameWidth = this.physics.world.bounds.width;
-    const gameHeight = this.physics.world.bounds.height;
-
-    // 랜덤 위치 선정 (월드 바운드 내에서)
-    const x = Phaser.Math.Between(0, gameWidth);
-    const y = Phaser.Math.Between(0, gameHeight);
-
-    const fish = fishItems.create(x, y, 'fish_item_sprite') as Phaser.Physics.Arcade.Sprite;
-    fish.setCollideWorldBounds(false); // 월드 바운드 충돌 비활성화 (맵 밖으로 나가지 않도록)
-    fish.setImmovable(true); // 움직이지 않도록 설정
-    fish.setScale(0.4); // 크기 조정
-    fish.play('fish_swim'); // 물고기 애니메이션 재생
 }
 
 // 나비 아이템 생성 시도 함수
@@ -434,7 +478,7 @@ function spawnButterflyVillain(this: Phaser.Scene) {
     if (butterflies.countActive(true) >= MAX_ACTIVE_BUTTERFLIES) {
         return;
     }
-    // 50% 확률로 나비 생성
+    // 10% 확률로 나비 생성
     if (Math.random() < BUTTERFLY_SPAWN_PROBABILITY) {
         spawnButterfly.call(this, butterflies);
     }
@@ -442,18 +486,17 @@ function spawnButterflyVillain(this: Phaser.Scene) {
 
 // 나비 아이템 생성 함수
 function spawnButterfly(this: Phaser.Scene, butterflies: Phaser.Physics.Arcade.Group) {
-    const gameWidth = this.physics.world.bounds.width;
-    const gameHeight = this.physics.world.bounds.height;
-
-    // 랜덤 위치 선정 (월드 바운드 내에서)
-    const x = Phaser.Math.Between(0, gameWidth);
-    const y = Phaser.Math.Between(0, gameHeight);
+    const camera = this.cameras.main;
+    // 나비를 현재 카메라 뷰 내에서 랜덤 위치에 생성
+    const x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right);
+    const y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom);
 
     const butterfly = butterflies.create(x, y, 'butterfly_sprite_3frame') as Phaser.Physics.Arcade.Sprite;
     butterfly.setCollideWorldBounds(true); // 월드 경계에 닿으면 튕기도록 설정
     butterfly.setBounce(1); // 완전 반사
     butterfly.setScale(0.5); // 크기 조정
     butterfly.play('butterfly_fly', true); // 나비 애니메이션 재생
+    butterfly.setDepth(1); // 나비 depth 설정
 
     // 초기 랜덤 속도 설정
     const angle = Phaser.Math.Between(0, 360);
@@ -461,60 +504,64 @@ function spawnButterfly(this: Phaser.Scene, butterflies: Phaser.Physics.Arcade.G
     const butterflyBody = butterfly.body as Phaser.Physics.Arcade.Body;
     this.physics.velocityFromAngle(angle, speed, butterflyBody.velocity);
 
-    // 나비의 불규칙한 움직임을 위한 타이머 데이터 설정 (1초~3초에서 0.5초~1.5초로 변경)
+    // 나비의 불규칙한 움직임을 위한 타이머 데이터 설정
     butterfly.setData('moveTimer', 0);
     butterfly.setData('nextMoveTime', Phaser.Math.Between(200, 800)); // 0.2초에서 0.8초 사이마다 방향 변경
 }
 
 
 function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
+    const camera = this.cameras.main;
+    // 쥐를 현재 카메라 뷰 밖의 랜덤 위치에 생성
     const edge = Phaser.Math.Between(0, 3);
     let x: number, y: number;
-    const gameWidth = this.physics.world.bounds.width;
-    const gameHeight = this.physics.world.bounds.height;
+    const buffer = 50; // 화면 밖으로 좀 더 떨어진 곳에 생성
 
     switch (edge) {
-        case 0: x = Phaser.Math.Between(0, gameWidth); y = -50; break;
-        case 1: x = Phaser.Math.Between(0, gameWidth); y = gameHeight + 50; break;
-        case 2: x = -50; y = Phaser.Math.Between(0, gameHeight); break;
-        case 3: x = gameWidth + 50; y = Phaser.Math.Between(0, gameHeight); break;
+        case 0: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.top - buffer; break; // 상단
+        case 1: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.bottom + buffer; break; // 하단
+        case 2: x = camera.worldView.left - buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 좌측
+        case 3: x = camera.worldView.right + buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 우측
         default: x = 0; y = 0; break;
     }
 
     const mouse = mice.create(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite;
     mouse.setBounce(0.2);
-    mouse.setCollideWorldBounds(false);
+    mouse.setCollideWorldBounds(false); // 월드 경계 충돌 비활성화 (화면 밖으로 나갈 수 있도록)
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
     mouse.setScale((32 / 100) * spriteScaleFactor);
     mouse.play('mouse_walk');
+    mouse.setDepth(1); // 쥐 depth 설정
     this.physics.moveToObject(mouse, player, 50);
 }
 
 function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
+    const camera = this.cameras.main;
+    // 개를 현재 카메라 뷰 밖의 랜덤 위치에 생성
     const edge = Phaser.Math.Between(0, 3);
     let x: number, y: number;
-    const gameWidth = this.physics.world.bounds.width;
-    const gameHeight = this.physics.world.bounds.height;
+    const buffer = 50; // 화면 밖으로 좀 더 떨어진 곳에 생성
 
     switch (edge) {
-        case 0: x = Phaser.Math.Between(0, gameWidth); y = -50; break;
-        case 1: x = Phaser.Math.Between(0, gameWidth); y = gameHeight + 50; break;
-        case 2: x = -50; y = Phaser.Math.Between(0, gameHeight); break;
-        case 3: x = gameWidth + 50; y = Phaser.Math.Between(0, gameHeight); break;
+        case 0: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.top - buffer; break; // 상단
+        case 1: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.bottom + buffer; break; // 하단
+        case 2: x = camera.worldView.left - buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 좌측
+        case 3: x = camera.worldView.right + buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 우측
         default: x = 0; y = 0; break;
     }
 
     const dog = dogs.create(x, y, 'dog_enemy_sprite') as CustomDogSprite; // CustomDogSprite로 캐스팅
     dog.setBounce(0.2);
-    dog.setCollideWorldBounds(false);
+    dog.setCollideWorldBounds(false); // 월드 경계 충돌 비활성화
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
     dog.setScale(0.5 * spriteScaleFactor);
     dog.play('dog_walk');
     dog.isKnockedBack = false; // 기본적으로 넉백 상태가 아님
+    dog.setDepth(1); // 개 depth 설정
 }
 
 function hitMouse(
@@ -719,6 +766,7 @@ function restartGame(this: Phaser.Scene) {
     this.data.set('isKnockedBack', false);
     this.data.set('shopOpened', false);
     this.data.set('skills', []); // 스킬도 초기화
+    this.data.get('generatedChunks').clear(); // 생성된 청크 목록 초기화
 
     // UI 요소 숨기기
     const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
@@ -929,6 +977,7 @@ function update(this: Phaser.Scene) {
                 butterfly.body.velocity.x = direction.x * BUTTERFLY_REPEL_FORCE;
                 butterfly.body.velocity.y = direction.y * BUTTERFLY_REPEL_FORCE;
                 // 방향 전환 타이머 초기화 (repel 중에는 불규칙 비행 로직이 바로 적용되지 않도록)
+                butterfly.setData('moveTimer', 0);
             } else {
                 // 기존 불규칙 비행 로직
                 let moveTimer = butterfly.getData('moveTimer') as number;
@@ -953,6 +1002,9 @@ function update(this: Phaser.Scene) {
             }
         }
     });
+
+    // 플레이어 위치에 따라 새로운 청크 생성
+    generateSurroundingChunks.call(this, player.x, player.y);
 }
 
 const GameCanvas: React.FC = () => {
