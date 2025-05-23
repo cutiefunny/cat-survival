@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as Phaser from 'phaser';
 import ShopModal from './shopModal'; // ShopModal.tsx 파일 경로에 맞게 수정해주세요.
 import { SkillsProvider, useSkills } from './SkillsContext'; // SkillsContext 임포트
-
+import levelExperience from '../public/levelSetting.json'; // 레벨 경험치 설정을 가져옵니다.
 
 function getGameDimensions() {
     if (typeof window !== 'undefined') {
@@ -78,6 +78,8 @@ const BUTTERFLY_SPAWN_PROBABILITY = 0.1; // 10% 확률로 나비 생성
 const MAX_ACTIVE_BUTTERFLIES = 1; // 화면에 표시될 최대 나비 수
 const BUTTERFLY_REPEL_DISTANCE = 150; // 플레이어가 나비에게 다가갈 때 나비가 멀어지는 거리
 const BUTTERFLY_REPEL_FORCE = 100; // 나비가 멀어지는 힘 (속도)
+
+const PLAYER_INVINCIBILITY_DURATION_MS = 2000; // 플레이어 무적 시간 (2초)
 
 const ENERGY_BAR_WIDTH = 60;
 const ENERGY_BAR_HEIGHT = 8;
@@ -229,6 +231,10 @@ function create(this: Phaser.Scene) {
     this.physics.add.collider(dogs, dogs);
     this.physics.add.collider(mice, dogs);
 
+    const playerLevel = this.add.text(0, 0, 'Level: 1', { fontSize: '16px', color: '#000000' });
+    playerLevel.setOrigin(0.5);
+    playerLevel.setDepth(2); // UI는 가장 위에 표시
+
     const scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '16px', color: '#000000' });
     scoreText.setOrigin(0.5);
     scoreText.setDepth(2); // UI는 가장 위에 표시
@@ -296,6 +302,8 @@ function create(this: Phaser.Scene) {
     this.data.set('butterflies', butterflies); // 나비 아이템 그룹 씬 데이터에 저장
     this.data.set('cursors', cursors);
     this.data.set('score', 0);
+    this.data.set('playerLevel', playerLevel);
+    this.data.set('playerLevelText', playerLevel);
     this.data.set('scoreText', scoreText);
     this.data.set('timerText', timerText);
     this.data.set('gameOverText', gameOverText);
@@ -307,6 +315,7 @@ function create(this: Phaser.Scene) {
     this.data.set('energyBarFill', energyBarFill);
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
     this.data.set('skills', []); // skills 배열을 씬 데이터에 저장
+    this.data.set('isInvincible', false); // 무적 상태 플래그 초기화
 
     // generatedChunks Set을 먼저 초기화합니다.
     this.data.set('generatedChunks', new Set<string>());
@@ -594,9 +603,15 @@ function hitDog(
 ) {
     if (gameOver) return;
 
+    // 플레이어가 이미 무적 상태이면 충돌을 무시
+    if (player.getData('isInvincible')) {
+        console.log('Player is invincible, ignoring dog hit.');
+        return;
+    }
+
     console.log('Collision detected! Player hit by dog!');
 
-    const dog = dogObject as CustomDogSprite; // CustomDogSprite로 캐스팅
+    const dog = dogObject as CustomDogSprite;
     // 플레이어가 개를 바라보는 방향을 향하고 있는지 확인
     const dotProduct = (dog.x - player.x) * (player.flipX ? -1 : 1);
     // !!! MODIFIED START: Conditional knockback based on skills !!!
@@ -662,6 +677,27 @@ function hitDog(
         }
         // !!! MODIFIED END: 에너지 감소 로직 이동 !!!
     }
+
+    // 무적 시간 시작
+    player.setData('isInvincible', true);
+    const invincibilityTween = this.tweens.add({
+        targets: player,
+        alpha: { from: 1, to: 0.5 }, // 100% 투명도에서 50% 투명도로
+        duration: 100, // 깜빡이는 속도 (0.1초마다)
+        repeat: -1, // 무한 반복
+        yoyo: true // 투명도가 다시 100%로 돌아오도록
+    });
+    player.setData('invincibilityTween', invincibilityTween);
+
+    this.time.delayedCall(PLAYER_INVINCIBILITY_DURATION_MS, () => {
+        player.setData('isInvincible', false);
+        const currentTween = player.getData('invincibilityTween');
+        if (currentTween) { // 트윈이 존재하는지 확인 후 정지
+            currentTween.stop();
+        }
+        player.setAlpha(1); // 플레이어 투명도를 원래대로 (완전히 보이게) 되돌림
+        console.log('Player invincibility ended.');
+    }, [], this);
 }
 
 // 물고기 아이템 획득 함수
@@ -925,6 +961,7 @@ function update(this: Phaser.Scene) {
         player.setFrame(0);
     }
 
+    const playerLevelText = this.data.get('playerLevelText') as Phaser.GameObjects.Text;
     const scoreText = this.data.get('scoreText') as Phaser.GameObjects.Text;
     const timerText = this.data.get('timerText') as Phaser.GameObjects.Text;
     const energyBarBg = this.data.get('energyBarBg') as Phaser.GameObjects.Graphics;
@@ -933,9 +970,33 @@ function update(this: Phaser.Scene) {
     const playerBottomY = player.y + (player.displayHeight / 2) + 5;
     const textSpacing = 20;
 
-    scoreText.setPosition(player.x, playerBottomY);
+    // scoreText.setPosition(player.x, playerBottomY);
+    // energyBarBg.x = player.x - (ENERGY_BAR_WIDTH / 2);
+    // energyBarBg.y = playerBottomY + textSpacing;
+    // energyBarFill.x = energyBarBg.x;
+    // energyBarFill.y = energyBarBg.y;
+
+    // playerLevelText.setPosition(player.x, playerBottomY + textSpacing * 2);
+    // timerText.setPosition(player.x, playerBottomY + textSpacing * 3);
+    // playerLevelText.setText('Level: ' + player.getData('level'));
+    // timerText.setText('Time: ' + Math.floor(elapsedTime / 1000) + 's');
+
+    scoreText.setScrollFactor(0);
+    playerLevelText.setScrollFactor(0);
+    timerText.setScrollFactor(0);
+    // energyBarBg.setScrollFactor(0);
+    // energyBarFill.setScrollFactor(0);
+
+    scoreText.setPosition(this.cameras.main.width / 2, 20);
+    playerLevelText.setPosition(this.cameras.main.width / 2, 50);
+    timerText.setPosition(this.cameras.main.width / 2, 80);
+    // energyBarBg.x = this.cameras.main.width / 2 - (ENERGY_BAR_WIDTH / 2);
+    // energyBarBg.y = 110;
+    // energyBarFill.x = energyBarBg.x;
+    // energyBarFill.y = energyBarBg.y;
+
     energyBarBg.x = player.x - (ENERGY_BAR_WIDTH / 2);
-    energyBarBg.y = playerBottomY + textSpacing;
+    energyBarBg.y = playerBottomY;
     energyBarFill.x = energyBarBg.x;
     energyBarFill.y = energyBarBg.y;
 
