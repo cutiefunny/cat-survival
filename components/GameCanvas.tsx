@@ -676,28 +676,28 @@ function hitDog(
             endGame.call(this);
         }
         // !!! MODIFIED END: 에너지 감소 로직 이동 !!!
+
+        // 무적 시간 시작
+        player.setData('isInvincible', true);
+        const invincibilityTween = this.tweens.add({
+            targets: player,
+            alpha: { from: 1, to: 0.3 }, // 100% 투명도에서 30% 투명도로
+            duration: 100, // 깜빡이는 속도 (0.1초마다)
+            repeat: -1, // 무한 반복
+            yoyo: true // 투명도가 다시 100%로 돌아오도록
+        });
+        player.setData('invincibilityTween', invincibilityTween);
+
+        this.time.delayedCall(PLAYER_INVINCIBILITY_DURATION_MS, () => {
+            player.setData('isInvincible', false);
+            const currentTween = player.getData('invincibilityTween');
+            if (currentTween) { // 트윈이 존재하는지 확인 후 정지
+                currentTween.stop();
+            }
+            player.setAlpha(1); // 플레이어 투명도를 원래대로 (완전히 보이게) 되돌림
+            console.log('Player invincibility ended.');
+        }, [], this);
     }
-
-    // 무적 시간 시작
-    player.setData('isInvincible', true);
-    const invincibilityTween = this.tweens.add({
-        targets: player,
-        alpha: { from: 1, to: 0.5 }, // 100% 투명도에서 50% 투명도로
-        duration: 100, // 깜빡이는 속도 (0.1초마다)
-        repeat: -1, // 무한 반복
-        yoyo: true // 투명도가 다시 100%로 돌아오도록
-    });
-    player.setData('invincibilityTween', invincibilityTween);
-
-    this.time.delayedCall(PLAYER_INVINCIBILITY_DURATION_MS, () => {
-        player.setData('isInvincible', false);
-        const currentTween = player.getData('invincibilityTween');
-        if (currentTween) { // 트윈이 존재하는지 확인 후 정지
-            currentTween.stop();
-        }
-        player.setAlpha(1); // 플레이어 투명도를 원래대로 (완전히 보이게) 되돌림
-        console.log('Player invincibility ended.');
-    }, [], this);
 }
 
 // 물고기 아이템 획득 함수
