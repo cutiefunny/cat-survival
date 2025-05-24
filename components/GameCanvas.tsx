@@ -47,6 +47,7 @@ const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
     }
 };
 
+//#region 상수 정의
 let gameOver = false;
 let elapsedTime = 0;
 
@@ -58,7 +59,7 @@ const MAX_ZOOM = 2.0;
 const PLAYER_PUSH_BACK_FORCE = 300;
 const KNOCKBACK_DURATION_MS = 250;
 
-const INITIAL_PLAYER_ENERGY = 3;
+let INITIAL_PLAYER_ENERGY = 3;
 
 const BASE_PLAYER_SPEED = 200;
 const DOG_CHASE_SPEED = BASE_PLAYER_SPEED * 0.3;
@@ -79,7 +80,7 @@ const MAX_ACTIVE_BUTTERFLIES = 1; // 화면에 표시될 최대 나비 수
 const BUTTERFLY_REPEL_DISTANCE = 150; // 플레이어가 나비에게 다가갈 때 나비가 멀어지는 거리
 const BUTTERFLY_REPEL_FORCE = 100; // 나비가 멀어지는 힘 (속도)
 
-const PLAYER_INVINCIBILITY_DURATION_MS = 2000; // 플레이어 무적 시간 (2초)
+const PLAYER_INVINCIBILITY_DURATION_MS = 500; // 플레이어 무적 시간 (0.5초)
 
 const ENERGY_BAR_WIDTH = 60;
 const ENERGY_BAR_HEIGHT = 8;
@@ -101,11 +102,13 @@ for (let i = 0; i < 10; i++) { // 10가지 색상 변형
     const lightness = Phaser.Math.FloatBetween(0.3, 0.4); // 명도 감소
     TILE_COLORS.push(Phaser.Display.Color.HSLToColor(hue, saturation, lightness).color);
 }
+//#endregion
 
-
+//스프라이트를 생성하는 함수
 function preload(this: Phaser.Scene) {
     this.load.spritesheet('player_sprite', '/images/cat_walk_3frame_sprite.png', { frameWidth: 100, frameHeight: 100 });
     this.load.image('cat_punch', '/images/cat_punch.png'); // cat_punch 이미지 로드
+    this.load.image('cat_hit', '/images/cat_hit.png'); // cat_hit 이미지 로드
     this.load.spritesheet('mouse_enemy_sprite', '/images/mouse_2frame_sprite.png', { frameWidth: 100, frameHeight: 64 });
     this.load.spritesheet('dog_enemy_sprite', '/images/dog_2frame_horizontal.png', { frameWidth: 100, frameHeight: 100 });
     // 물고기 아이템 스프라이트 로드 (frameWidth, frameHeight 조정)
@@ -114,6 +117,7 @@ function preload(this: Phaser.Scene) {
     this.load.spritesheet('butterfly_sprite_3frame', '/images/butterfly_sprite_3frame.png', { frameWidth: 100, frameHeight: 83 });
 }
 
+//게임의 각 요소를 생성하는 함수
 function create(this: Phaser.Scene) {
     gameOver = false;
     elapsedTime = 0;
@@ -136,6 +140,14 @@ function create(this: Phaser.Scene) {
     player.setDrag(500);
     player.setDepth(1); // 플레이어 depth 설정
 
+    // 레벨 시스템 초기화
+    player.setData('level', 1);
+    player.setData('experience', 0);
+
+    const playerLevelText = this.add.text(0, 0, 'Level: 1', { fontSize: '16px', color: '#000000' });
+    playerLevelText.setOrigin(0.5);
+    playerLevelText.setDepth(2); // UI는 가장 위에 표시
+
     let finalPlayerScale;
     if (minWidthApplied) {
         finalPlayerScale = 0.5 * (isMobile ? 0.7 : 1.0);
@@ -144,7 +156,7 @@ function create(this: Phaser.Scene) {
     }
     player.setScale(finalPlayerScale);
 
-
+    // 플레이어 애니메이션 추가
     this.anims.create({
         key: 'cat_walk',
         frames: this.anims.generateFrameNumbers('player_sprite', { start: 0, end: 2 }),
@@ -153,6 +165,7 @@ function create(this: Phaser.Scene) {
     });
     player.setFrame(0);
 
+    // 쥐 애니메이션 추가
     this.anims.create({
         key: 'mouse_walk',
         frames: this.anims.generateFrameNumbers('mouse_enemy_sprite', { start: 0, end: 1 }),
@@ -160,6 +173,7 @@ function create(this: Phaser.Scene) {
         repeat: -1
     });
 
+    // 개 애니메이션 추가
     this.anims.create({
         key: 'dog_walk',
         frames: this.anims.generateFrameNumbers('dog_enemy_sprite', { start: 0, end: 1 }),
@@ -183,11 +197,12 @@ function create(this: Phaser.Scene) {
         repeat: -1
     });
 
-    const mice = this.physics.add.group();
-    const dogs = this.physics.add.group();
+    const mice = this.physics.add.group(); // 쥐 적 그룹 생성
+    const dogs = this.physics.add.group(); // 개 적 그룹 생성
     const fishItems = this.physics.add.group(); // 물고기 아이템 그룹 생성
     const butterflies = this.physics.add.group(); // 나비 아이템 그룹 생성
 
+    // 쥐 생성 이벤트 추가
     this.time.addEvent({
         delay: MOUSE_SPAWN_INTERVAL_MS,
         callback: spawnMouseVillain,
@@ -195,6 +210,7 @@ function create(this: Phaser.Scene) {
         loop: true
     });
 
+    // 개 생성 이벤트 추가
     this.time.addEvent({
         delay: DOG_SPAWN_INTERVAL_MS,
         callback: spawnDogVillain,
@@ -231,14 +247,20 @@ function create(this: Phaser.Scene) {
     this.physics.add.collider(dogs, dogs);
     this.physics.add.collider(mice, dogs);
 
-    const playerLevel = this.add.text(0, 0, 'Level: 1', { fontSize: '16px', color: '#000000' });
-    playerLevel.setOrigin(0.5);
-    playerLevel.setDepth(2); // UI는 가장 위에 표시
+    //플레이어 레벨은 1로 초기화
+    let playerLevel = 1;
 
+    //플레이어 레벨 텍스트 생성
+    // const playerLevelText = this.add.text(0, 0, 'Level: 1', { fontSize: '16px', color: '#000000' });
+    // playerLevelText.setOrigin(0.5);
+    // playerLevelText.setDepth(2); // UI는 가장 위에 표시
+
+    //스코어 텍스트 생성
     const scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '16px', color: '#000000' });
     scoreText.setOrigin(0.5);
     scoreText.setDepth(2); // UI는 가장 위에 표시
 
+    //타이머 텍스트 생성
     const timerText = this.add.text(
         0, 0,
         'Time: 0s',
@@ -248,16 +270,19 @@ function create(this: Phaser.Scene) {
     timerText.setVisible(false);
     timerText.setDepth(2); // UI는 가장 위에 표시
 
+    //에너지 바 배경 생성
     const energyBarBg = this.add.graphics();
     energyBarBg.fillStyle(ENERGY_BAR_COLOR_BG, 0.8);
     energyBarBg.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
     energyBarBg.setDepth(2); // UI는 가장 위에 표시
 
+    //에너지 바 채우기 생성
     const energyBarFill = this.add.graphics();
     energyBarFill.fillStyle(ENERGY_BAR_COLOR_FILL, 1);
     energyBarFill.fillRect(0, 0, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
     energyBarFill.setDepth(2); // UI는 가장 위에 표시
 
+    //생존 시간을 표시하는 타이머 텍스트 생성
     this.time.addEvent({
         delay: 1000,
         callback: () => {
@@ -270,6 +295,7 @@ function create(this: Phaser.Scene) {
         loop: true
     });
 
+    //게임오버 텍스트 생성
     const gameOverText = this.add.text(
         this.cameras.main.centerX,
         this.cameras.main.centerY,
@@ -295,6 +321,7 @@ function create(this: Phaser.Scene) {
     restartButton.on('pointerdown', () => restartGame.call(this)); // 클릭 시 restartGame 호출
     restartButton.setDepth(3); // 재시작 버튼도 최상단
 
+    //여기부터 데이터 셋팅
     this.data.set('player', player);
     this.data.set('mice', mice);
     this.data.set('dogs', dogs);
@@ -303,7 +330,8 @@ function create(this: Phaser.Scene) {
     this.data.set('cursors', cursors);
     this.data.set('score', 0);
     this.data.set('playerLevel', playerLevel);
-    this.data.set('playerLevelText', playerLevel);
+    this.data.set('playerLevelText', playerLevelText);
+    this.data.set('playerLevelValue', 1);         // 초기 레벨 값 저장
     this.data.set('scoreText', scoreText);
     this.data.set('timerText', timerText);
     this.data.set('gameOverText', gameOverText);
@@ -414,17 +442,22 @@ function generateSurroundingChunks(this: Phaser.Scene, worldX: number, worldY: n
 // CustomDogSprite 인터페이스 (dog에 isKnockedBack 속성 추가를 위함)
 interface CustomDogSprite extends Phaser.Physics.Arcade.Sprite {
     isKnockedBack?: boolean; // 넉백 상태를 추적하는 속성
+    isStunned?: boolean; // 기절 상태를 추적하는 속성
 }
 
+//쥐를 생성하는 조건
 function spawnMouseVillain(this: Phaser.Scene) {
     if (gameOver) return;
+
+    let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
+    const maxActiveMice = MAX_ACTIVE_MICE + playerLevel - 1; // 레벨에 따라 최대 쥐 개수 증가
 
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
 
     const activeMice = mice.countActive(true);
 
-    if (activeMice >= MAX_ACTIVE_MICE) {
+    if (activeMice >= maxActiveMice) {
         // console.log(`Max mice (${MAX_ACTIVE_MICE}) reached. Skipping mouse spawn.`);
         return;
     }
@@ -432,15 +465,19 @@ function spawnMouseVillain(this: Phaser.Scene) {
     spawnMouse.call(this, mice, player);
 }
 
+//개를 생성하는 조건
 function spawnDogVillain(this: Phaser.Scene) {
     if (gameOver) return;
+
+    let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
+    const maxActiveDogs = MAX_ACTIVE_DOGS + playerLevel - 1; // 레벨에 따라 최대 개 개수 증가
 
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
 
     const activeDogs = dogs.countActive(true);
 
-    if (activeDogs >= MAX_ACTIVE_DOGS) {
+    if (activeDogs >= maxActiveDogs) {
         //console.log(`Max dogs (${MAX_ACTIVE_DOGS}) reached. Skipping dog spawn.`);
         return;
     }
@@ -448,7 +485,7 @@ function spawnDogVillain(this: Phaser.Scene) {
     spawnDog.call(this, dogs, player);
 }
 
-// 물고기 아이템 생성 함수
+// 물고기 아이템 생성 시간과 위치와 빈도를 설정한다
 function spawnFishItem(this: Phaser.Scene) {
     if (gameOver) return;
 
@@ -479,7 +516,7 @@ function spawnFishItem(this: Phaser.Scene) {
     }
 }
 
-// 나비 아이템 생성 시도 함수
+// 나비 아이템 생성 시간과 빈도를 설정한다
 function spawnButterflyVillain(this: Phaser.Scene) {
     if (gameOver) return;
     const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
@@ -518,7 +555,7 @@ function spawnButterfly(this: Phaser.Scene, butterflies: Phaser.Physics.Arcade.G
     butterfly.setData('nextMoveTime', Phaser.Math.Between(200, 800)); // 0.2초에서 0.8초 사이마다 방향 변경
 }
 
-
+//쥐를 생성하는 함수
 function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const camera = this.cameras.main;
     // 쥐를 현재 카메라 뷰 밖의 랜덤 위치에 생성
@@ -536,7 +573,7 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
 
     const mouse = mice.create(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite;
     mouse.setBounce(0.2);
-    mouse.setCollideWorldBounds(false); // 월드 경계 충돌 비활성화 (화면 밖으로 나갈 수 있도록)
+    mouse.setCollideWorldBounds(true); // 월드 경계 충돌 활성화 (화면 밖으로 나갈 수 없도록)
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
@@ -546,6 +583,7 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
     this.physics.moveToObject(mouse, player, 50);
 }
 
+//개를 생성하는 함수
 function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const camera = this.cameras.main;
     // 개를 현재 카메라 뷰 밖의 랜덤 위치에 생성
@@ -570,9 +608,11 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
     dog.setScale(0.5 * spriteScaleFactor);
     dog.play('dog_walk');
     dog.isKnockedBack = false; // 기본적으로 넉백 상태가 아님
+    dog.isStunned = false; // 기본적으로 기절 상태가 아님
     dog.setDepth(1); // 개 depth 설정
 }
 
+//쥐를 잡았을 때 처리하는 함수
 function hitMouse(
     this: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
@@ -594,8 +634,38 @@ function hitMouse(
     this.data.set('score', score);
     const scoreText = this.data.get('scoreText') as Phaser.GameObjects.Text;
     scoreText.setText('Score: ' + score);
+
+    // 경험치 획득 및 레벨업 체크
+    let experience = player.getData('experience') as number;
+    experience += 10; // 경험치 획득량
+    player.setData('experience', experience);
+    checkLevelUp.call(this, player);
 }
 
+//쥐를 잡을 때 레벨업 여부
+function checkLevelUp(this: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
+    const currentLevel = player.getData('level') as number;
+    const currentExperience = player.getData('experience') as number;
+    const levelThresholds: { [key: string]: number } = levelExperience.levelExperience; // 명시적인 타입 정의
+    const levelKeys = Object.keys(levelThresholds).map(Number).sort((a, b) => a - b);
+    let newLevel = currentLevel;
+
+    for (const level of levelKeys) {
+        if (currentExperience >= levelThresholds[String(level)]) {
+            newLevel = Math.max(newLevel, level);
+        }
+    }
+
+    if (newLevel > currentLevel) {
+        console.log(`Level Up! From ${currentLevel} to ${newLevel}`);
+        player.setData('level', newLevel);
+        const playerLevelText = this.data.get('playerLevelText') as Phaser.GameObjects.Text;
+        playerLevelText.setText('Level: ' + newLevel);
+        this.data.set('playerLevelValue', newLevel); // 레벨 값 업데이트
+    }
+}
+
+//개와 충돌 시 처리하는 함수
 function hitDog(
     this: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
@@ -618,7 +688,9 @@ function hitDog(
     // skills 배열이 number[] 타입이므로 1을 숫자로 사용합니다.
     let skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
     const isMovingForAnimation = this.data.get('isMovingForAnimation') as boolean;
-    if (skills.includes(1) && dotProduct < 0 && isMovingForAnimation) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
+    if (skills.some(skill => skill >= 11 && skill <= 19) && dotProduct < 0 && isMovingForAnimation) { // FIX: Changed skills.includes('1') to skills.includes(1) for number array
+        let skillLevel = skills.filter(skill => skill >= 11 && skill <= 19).sort((a, b) => b - a)[0];
+            skillLevel = skillLevel - 10; // 11~19 범위의 스킬 레벨을 1~9로 변환
         // Skill '1' active: knock back the dog, not the player
         if (player.body && dog.body) {
             const direction = new Phaser.Math.Vector2(dog.x - player.x, dog.y - player.y).normalize();
@@ -630,10 +702,21 @@ function hitDog(
             dog.stop(); // 개 애니메이션 정지
             dog.body.checkCollision.none = true; // 넉백 중 충돌 비활성화
             this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
-            dog.isKnockedBack = false; // 개 넉백 상태 해제
+                dog.isKnockedBack = false; // 개 넉백 상태 해제
                 dog.play('dog_walk', true); // 개 애니메이션 다시 시작
                 if (dog.body) {
                     dog.body.checkCollision.none = false; // 넉백 후 충돌 다시 활성화
+                }
+                // 스턴 효과 추가 (skillLevel이 2 이상인 경우)
+                if (skillLevel >= 2) {
+                    dog.isStunned = true; // 기절 상태로 설정
+                    dog.setTint(0x0000ff); // 파란색으로 변경 (기절 시각 효과)
+                    dog.setVelocity(0, 0); // 움직임 멈춤
+                    this.time.delayedCall(skillLevel * 1000, () => { // skillLevel * 1초 후에 기절 해제
+                        dog.isStunned = false;
+                        dog.clearTint(); // 색상 제거
+                        console.log('Dog stun ended.');
+                    }, [], this);
                 }
                 console.log('Dog knockback ended.');
             }, [], this);
@@ -648,6 +731,7 @@ function hitDog(
     } else {
         // Skill '1' not active: player gets knocked back (original logic)
         if (player.body && dog.body) {
+
             const direction = new Phaser.Math.Vector2(player.x - dog.x, player.y - dog.y).normalize();
             player.setVelocity(direction.x * PLAYER_PUSH_BACK_FORCE, direction.y * PLAYER_PUSH_BACK_FORCE);
             console.log(`Player pushed back by dog with force: ${PLAYER_PUSH_BACK_FORCE} (Skill 1 inactive)`);
@@ -655,6 +739,9 @@ function hitDog(
             this.data.set('isKnockedBack', true);
             this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
                 this.data.set('isKnockedBack', false);
+                // 넉백 종료 후 원래 스프라이트로 복귀
+                player.setTexture('player_sprite'); // 원래 스프라이트 시트로 복귀
+                player.play('cat_walk', true); // 원래 애니메이션 재생
                 console.log('Knockback ended (player)');
             }, [], this);
         }
@@ -700,7 +787,7 @@ function hitDog(
     }
 }
 
-// 물고기 아이템 획득 함수
+//물고기 아이템 획득 함수
 function collectFish(
     this: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
@@ -728,7 +815,7 @@ function collectFish(
     }
 }
 
-// 나비 아이템 획득 함수
+//나비 아이템 획득 함수
 function collectButterfly(
     this: Phaser.Scene,
     player: Phaser.Physics.Arcade.Sprite,
@@ -754,7 +841,7 @@ function collectButterfly(
     energyBarFill.fillRect(0, 0, newWidth, ENERGY_BAR_HEIGHT);
 }
 
-
+//게임 오버 처리 함수
 function endGame(this: Phaser.Scene) {
     if (gameOver) return;
     gameOver = true;
@@ -763,8 +850,10 @@ function endGame(this: Phaser.Scene) {
     this.time.removeAllEvents();
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
+    
     if (player) {
         player.stop();
+        player.setTexture('cat_hit');
     }
 
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
@@ -788,7 +877,7 @@ function endGame(this: Phaser.Scene) {
     }
 }
 
-// 게임 재시작 함수
+//게임 재시작 함수
 function restartGame(this: Phaser.Scene) {
     console.log('Restarting game...');
     gameOver = false;
@@ -825,43 +914,62 @@ function restartGame(this: Phaser.Scene) {
     this.scene.restart();
 }
 
-
+//게임 업데이트 함수
 function update(this: Phaser.Scene) {
     if (gameOver) {
         return;
     }
 
+    //먼저 각 요소를 정의한다
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
     const cursors = this.data.get('cursors') as Phaser.Types.Input.Keyboard.CursorKeys | undefined;
     const isKnockedBack = this.data.get('isKnockedBack') as boolean;
+    const isInvincible = player.getData('isInvincible') as boolean;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const skills = this.data.get('skills') as number[]; // skills 배열을 씬 데이터에서 가져옴
     const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group; // 나비 그룹 가져오기
+    let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
+    const experience = player.getData('experience') as number; // 플레이어 경험치 가져오기
+    const levelThresholds: { [key: string]: number } = levelExperience.levelExperience; // 명시적인 타입 정의
+    const experienceNeededForNextLevel = levelThresholds[String(playerLevel+1)] || Infinity;
 
     if (!player || !cursors) {
         return;
     }
 
-    const playerSpeed = BASE_PLAYER_SPEED;
+    // 스킬 2 보유 시 속도 증가
+    let currentPlayerSpeed = BASE_PLAYER_SPEED;
+    if (skills.some(skill => skill >= 21 && skill <= 29)) {
+        let skillLevel = skills.filter(skill => skill >= 21 && skill <= 29).sort((a, b) => b - a)[0];
+        skillLevel = skillLevel - 20; // 21~29 범위의 스킬 레벨을 1~9로 변환
+        let speedIncreaseFactor = 1 + (skillLevel * 0.1); // 10%씩 증가
+        currentPlayerSpeed = BASE_PLAYER_SPEED * speedIncreaseFactor;
+    }
+
+    const playerSpeed = currentPlayerSpeed;
     let isMovingForAnimation = false;
 
     const score = this.data.get('score') as number;
     const shopOpened = this.data.get('shopOpened') as boolean;
-    const openShopModal = this.data.get('openShopModal') as (score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
-    
-    if (score >= 50 && !shopOpened) { 
+    const openShopModal = this.data.get('openShopModal') as (level:number, score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
+
+    //상점 오픈 조건 -> 레벨업 조건(levelExperience에 {level:score}로 정의 됨)
+    console.log("Phaser Scene Update: Checking if shop should be opened. Current level:", playerLevel, "Current experience:", experience, "Experience needed for next level:", experienceNeededForNextLevel);
+    if (!shopOpened && experience >= experienceNeededForNextLevel) {
         this.data.set('shopOpened', true);
+        this.data.set('playerLevel', playerLevel + 1); // 레벨업
+        playerLevel++;
         
         if (openShopModal) {
             console.log("Phaser Scene Update: Calling openShopModal callback. Score:", score); 
-            openShopModal(score, skills);
+            openShopModal(playerLevel, score, skills);
         } else {
             console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data! This indicates a failure in passing the callback from React to Phaser."); 
         }
     }
 
-
+    // 플레이어의 움직임과 애니메이션 처리
     if (!isKnockedBack) {
         if (this.input.pointer1.isDown && this.input.pointer2.isDown) {
             const currentPinchDistance = Phaser.Math.Distance.Between(
@@ -954,6 +1062,12 @@ function update(this: Phaser.Scene) {
         }
     }
 
+    // 플레이어 스프라이트 변경 (무적 시간 동안만)
+    if (isInvincible) {
+        player.setTexture('cat_hit'); // cat_hit 이미지 로드되어 있어야 함
+    }
+
+    // 애니메이션 처리
     if (isMovingForAnimation) {
         player.play('cat_walk', true);
     } else {
@@ -966,6 +1080,7 @@ function update(this: Phaser.Scene) {
     const timerText = this.data.get('timerText') as Phaser.GameObjects.Text;
     const energyBarBg = this.data.get('energyBarBg') as Phaser.GameObjects.Graphics;
     const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
+    const playerLevelValue = this.data.get('playerLevelValue') as number; // 현재 레벨 값 가져오기
 
     const playerBottomY = player.y + (player.displayHeight / 2) + 5;
     const textSpacing = 20;
@@ -981,6 +1096,7 @@ function update(this: Phaser.Scene) {
     // playerLevelText.setText('Level: ' + player.getData('level'));
     // timerText.setText('Time: ' + Math.floor(elapsedTime / 1000) + 's');
 
+    //점수, 레벨, 타이머 텍스트 위치 설정 - 화면 중앙으로 이동
     scoreText.setScrollFactor(0);
     playerLevelText.setScrollFactor(0);
     timerText.setScrollFactor(0);
@@ -989,17 +1105,20 @@ function update(this: Phaser.Scene) {
 
     scoreText.setPosition(this.cameras.main.width / 2, 20);
     playerLevelText.setPosition(this.cameras.main.width / 2, 50);
+    playerLevelText.setText('Level: ' + playerLevelValue); // 텍스트 업데이트
     timerText.setPosition(this.cameras.main.width / 2, 80);
     // energyBarBg.x = this.cameras.main.width / 2 - (ENERGY_BAR_WIDTH / 2);
     // energyBarBg.y = 110;
     // energyBarFill.x = energyBarBg.x;
     // energyBarFill.y = energyBarBg.y;
 
+    //에너지 바 위치 설정 - 플레이어 아래쪽으로 이동
     energyBarBg.x = player.x - (ENERGY_BAR_WIDTH / 2);
     energyBarBg.y = playerBottomY;
     energyBarFill.x = energyBarBg.x;
     energyBarFill.y = energyBarBg.y;
 
+    //쥐의 움직임 처리
     mice.getChildren().forEach((mouseObject) => {
         const mouse = mouseObject as Phaser.Physics.Arcade.Sprite;
         if (mouse.body instanceof Phaser.Physics.Arcade.Body) {
@@ -1011,20 +1130,45 @@ function update(this: Phaser.Scene) {
         }
     });
 
+    //개의 움직임 처리
     dogs.getChildren().forEach((dogObject) => {
         //const dog = dogObject as Phaser.Physics.Arcade.Sprite;
+        let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
+        let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.05); // 레벨에 따라 속도 증가
         const dog = dogObject as CustomDogSprite; // CustomDogSprite로 캐스팅
-        if (dog.active && dog.body && !dog.isKnockedBack) {
-            this.physics.moveToObject(dog, player, DOG_CHASE_SPEED);
+        if (dog.active && dog.body && !dog.isKnockedBack && !dog.isStunned) { // 넉백이나 기절 상태가 아닐 때만 움직임 처리
+            // 겹침 방지 로직 추가
+            let overlapping = false;
+            dogs.getChildren().forEach((otherDogObject) => {
+                if (dogObject !== otherDogObject) {
+                    const otherDog = otherDogObject as CustomDogSprite;
+                    if (otherDog.active && otherDog.body) {
+                        const distance = Phaser.Math.Distance.Between(dog.x, dog.y, otherDog.x, otherDog.y);
+                        if (distance < 50) { // 50픽셀 이내로 가까우면 겹침으로 판단
+                            overlapping = true;
+                        }
+                    }
+                }
+            });
+
+            if (overlapping) {
+
+                const speed = Phaser.Math.Between(0.5, 1.5) * dogChaseSpeed; // 50%에서 150% 사이 랜덤 속도
+                this.physics.moveToObject(dog, player, speed); // 플레이어를 향해 이동
+            } else {
+                // 겹쳐있지 않다면 플레이어를 향해 이동
+                this.physics.moveToObject(dog, player, dogChaseSpeed);
+            }
+
             if (dog.body.velocity.x < 0) {
-                dog.setFlipX(false);
+            dog.setFlipX(false);
             } else if (dog.body.velocity.x > 0) {
-                dog.setFlipX(true);
+            dog.setFlipX(true);
             }
         }
     });
 
-    // 나비 불규칙 비행 로직
+    //나비 불규칙 비행 로직
     butterflies.getChildren().forEach((butterflyObject) => {
         const butterfly = butterflyObject as Phaser.Physics.Arcade.Sprite;
         // butterfly.active와 butterfly.body가 모두 존재할 때만 로직 실행
@@ -1075,6 +1219,7 @@ const GameCanvas: React.FC = () => {
     const [showShopModal, setShowShopModal] = useState(false);
     const [currentScore, setCurrentScore] = useState(0);
     const { skills } = useSkills(); // skills 배열을 React Context에서 가져옴
+    const [currentLevel, setCurrentLevel] = useState(1); // 현재 레벨 상태 추가
     console.log('GameCanvas: skills from context:', skills); // skills 배열 확인
 
     useEffect(() => {
@@ -1086,13 +1231,14 @@ const GameCanvas: React.FC = () => {
             
             const initialDataForScene: {
                 minWidthApplied: boolean;
-                openShopModal: (score: number, skills: number[], closeShop: () => void) => void; // closeShop 추가
+                openShopModal: (level: number, score: number, skills: number[], closeShop: () => void) => void; // closeShop 추가
             } = {
                 minWidthApplied: minWidthApplied,
-                openShopModal: (score: number, skills: number[], closeShop: () => void) => { // closeShop 받음
+                openShopModal: (level: number, score: number, skills: number[], closeShop: () => void) => { // closeShop 받음
                     console.log("React: openShopModal callback called from Phaser. Score:", score);
                     setShowShopModal(true);
                     setCurrentScore(score);
+                    setCurrentLevel(level);
                     if (gameRef.current) {
                         gameRef.current.scene.pause('MainScene');
                     }
@@ -1158,6 +1304,23 @@ const GameCanvas: React.FC = () => {
     useEffect(() => {
         if (gameSceneRef.current) {
             gameSceneRef.current.data.set('skills', skills);
+            gameSceneRef.current.data.set('playerLevel', currentLevel); // 현재 레벨 업데이트
+            gameSceneRef.current.data.set('shopOpened', false); // 스킬 업데이트 후 상점 오픈 상태 초기화
+
+            // 스킬 3이 포함되었을 경우 에너지 최대치를 4로 변경하고 현재 에너지도 4로 설정
+            if (skills.some(skill => skill >= 31 && skill <= 39)) {
+                let skillLevel = skills.filter(skill => skill >= 31 && skill <= 39).sort((a, b) => b - a)[0];
+                skillLevel = skillLevel - 30; // 31~39 범위의 스킬 레벨을 1~9로 변환
+                const newMaxEnergy = 3 + skillLevel;
+                gameSceneRef.current.data.set('energy', newMaxEnergy);
+                // INITIAL_PLAYER_ENERGY 상수도 업데이트 (선택 사항, 이후 에너지 관련 로직에서 사용될 수 있음)
+                INITIAL_PLAYER_ENERGY = newMaxEnergy;
+                console.log('근성장 스킬 획득! 최대 에너지 변경.');
+            } else {
+                // 스킬 3이 없는 경우 최대 에너지를 3으로 유지 (혹시 모를 상황 대비)
+                INITIAL_PLAYER_ENERGY = 3;
+            }
+
             console.log('Phaser scene skills updated:', skills);
         }
     }, [skills]);
@@ -1171,7 +1334,7 @@ const GameCanvas: React.FC = () => {
 
     return (
         <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <ShopModal isVisible={showShopModal} onClose={closeShopModal} score={currentScore} />
+            <ShopModal isVisible={showShopModal} onClose={closeShopModal} level={currentLevel} skills={skills} />
         </div>
     );
 };
