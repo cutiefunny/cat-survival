@@ -115,6 +115,7 @@ function preload(this: Phaser.Scene) {
     this.load.spritesheet('fish_item_sprite', '/images/fish_sprite_2frame.png', { frameWidth: 100, frameHeight: 100 }); // frameHeight를 100으로 수정
     // 나비 아이템 스프라이트 로드 (사용자 수정 반영: frameHeight를 83으로 수정)
     this.load.spritesheet('butterfly_sprite_3frame', '/images/butterfly_sprite_3frame.png', { frameWidth: 100, frameHeight: 83 });
+    this.load.image('cat_cry', '/images/cat_cry.png'); // cat_cry 이미지 로드
 }
 
 //게임의 각 요소를 생성하는 함수
@@ -132,7 +133,6 @@ function create(this: Phaser.Scene) {
 
 
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
-
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
 
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
@@ -144,7 +144,19 @@ function create(this: Phaser.Scene) {
     player.setData('level', 1);
     player.setData('experience', 0);
 
-    const playerLevelText = this.add.text(0, 0, 'Level: 1', { fontSize: '16px', color: '#000000' });
+    const playerLevelText = this.add.text(0, 0, 'Level: 1', {
+        fontSize: '24px',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 4,
+        shadow: {
+            offsetX: 2,
+            offsetY: 2,
+            color: '#000',
+            blur: 2,
+            fill: true
+        }
+    });
     playerLevelText.setOrigin(0.5);
     playerLevelText.setDepth(2); // UI는 가장 위에 표시
 
@@ -272,7 +284,19 @@ function create(this: Phaser.Scene) {
     // playerLevelText.setDepth(2); // UI는 가장 위에 표시
 
     //스코어 텍스트 생성
-    const scoreText = this.add.text(0, 0, 'Score: 0', { fontSize: '16px', color: '#000000' });
+    const scoreText = this.add.text(0, 0, 'Score: 0', {
+        fontSize: '24px',
+        color: '#ffffff',
+        stroke: '#000000',
+        strokeThickness: 4,
+        shadow: {
+            offsetX: 2,
+            offsetY: 2,
+            color: '#000',
+            blur: 2,
+            fill: true
+        }
+    });
     scoreText.setOrigin(0.5);
     scoreText.setDepth(2); // UI는 가장 위에 표시
 
@@ -316,7 +340,19 @@ function create(this: Phaser.Scene) {
         this.cameras.main.centerX,
         this.cameras.main.centerY,
         'Game Over',
-        { fontSize: '64px', color: '#ff0000' }
+        {
+            fontSize: '64px',
+            color: '#ff0000',
+            stroke: '#000000',       // 외곽선 색상
+            strokeThickness: 8,   // 외곽선 두께
+            shadow: {
+                offsetX: 5,
+                offsetY: 5,
+                color: '#000',
+                blur: 5,
+                fill: true
+            }
+        }
     );
     gameOverText.setOrigin(0.5);
     gameOverText.setScrollFactor(0);
@@ -327,8 +363,22 @@ function create(this: Phaser.Scene) {
     const restartButton = this.add.text(
         this.cameras.main.centerX,
         this.cameras.main.centerY + 100, // 게임 오버 텍스트 아래에 위치
-        'Restart Game',
-        { fontSize: '32px', color: '#0000ff', backgroundColor: '#cccccc', padding: { x: 20, y: 10 } }
+        'Try again',
+        {
+            fontSize: '32px',
+            color: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 20, y: 10 },
+            stroke: '#ffffff',       // 외곽선 색상
+            strokeThickness: 4,   // 외곽선 두께
+            shadow: {
+                offsetX: 2,
+                offsetY: 2,
+                color: '#cccccc',
+                blur: 3,
+                fill: true
+            },
+        }
     );
     restartButton.setOrigin(0.5);
     restartButton.setScrollFactor(0);
@@ -798,14 +848,14 @@ function hitDog(
 
         // 무적 시간 시작
         player.setData('isInvincible', true);
-        const invincibilityTween = this.tweens.add({
-            targets: player,
-            alpha: { from: 1, to: 0.3 }, // 100% 투명도에서 30% 투명도로
-            duration: 100, // 깜빡이는 속도 (0.1초마다)
-            repeat: -1, // 무한 반복
-            yoyo: true // 투명도가 다시 100%로 돌아오도록
-        });
-        player.setData('invincibilityTween', invincibilityTween);
+        // const invincibilityTween = this.tweens.add({
+        //     targets: player,
+        //     alpha: { from: 1, to: 0.3 }, // 100% 투명도에서 30% 투명도로
+        //     duration: 100, // 깜빡이는 속도 (0.1초마다)
+        //     repeat: -1, // 무한 반복
+        //     yoyo: true // 투명도가 다시 100%로 돌아오도록
+        // });
+        // player.setData('invincibilityTween', invincibilityTween);
 
         this.time.delayedCall(PLAYER_INVINCIBILITY_DURATION_MS, () => {
             player.setData('isInvincible', false);
@@ -882,7 +932,7 @@ function endGame(this: Phaser.Scene) {
     this.time.removeAllEvents();
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
-    
+
     if (player) {
         player.stop();
         player.setTexture('cat_hit');
@@ -890,22 +940,61 @@ function endGame(this: Phaser.Scene) {
 
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
-    const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group; // 물고기 아이템 그룹 가져오기
-    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group; // 나비 아이템 그룹 가져오기
+    const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group;
+    const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
     const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
     const restartButton = this.data.get('restartButton') as Phaser.GameObjects.Text;
 
-
     if (mice) mice.getChildren().forEach((mouse) => (mouse.body as any)?.stop());
     if (dogs) dogs.getChildren().forEach((dog) => (dog.body as any)?.stop());
-    if (fishItems) fishItems.getChildren().forEach((fish) => (fish.body as any)?.stop()); // 물고기 아이템도 정지
-    if (butterflies) butterflies.getChildren().forEach((butterfly) => (butterfly.body as any)?.stop()); // 나비 아이템도 정지
+    if (fishItems) fishItems.getChildren().forEach((fish) => (fish.body as any)?.stop());
+    if (butterflies) butterflies.getChildren().forEach((butterfly) => (butterfly.body as any)?.stop());
 
     if (gameOverText) {
         gameOverText.setVisible(true);
     }
     if (restartButton) {
-        restartButton.setVisible(true); // 재시작 버튼 보이게
+        restartButton.setVisible(true);
+    }
+
+    // cat_cry 이미지 추가
+    const cryImage = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY - 50, 'cat_cry');
+    cryImage.setOrigin(0.5);
+    cryImage.setScrollFactor(0);
+    cryImage.setDepth(2); // gameOverText 위에 표시
+    cryImage.setScale(1); // 필요에 따라 크기 조정
+
+    // 피드백 버튼 생성
+    const feedbackButton = this.add.text(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY + 200, // 재시작 버튼 아래에 위치
+        '피드백 보내기(클릭)',
+        {
+            fontSize: '20px',
+            color: '#ffffff',
+            // backgroundColor: '#000000', // 배경색 제거
+        }
+    );
+    feedbackButton.setOrigin(0.5);
+    feedbackButton.setScrollFactor(0);
+    feedbackButton.setInteractive(); // 클릭 가능하도록 설정
+    feedbackButton.setVisible(false); // 초기에는 보이지 않도록 설정
+    feedbackButton.on('pointerdown', () => {
+        // 피드백 URL로 이동
+        window.open('https://github.com/cutiefunny/cat-survival/issues', '_blank');
+    });
+    feedbackButton.setDepth(3); // 피드백 버튼도 최상단
+
+    this.data.set('feedbackButton', feedbackButton); // 피드백 버튼 씬 데이터에 저장
+
+    if (gameOverText) {
+        gameOverText.setVisible(true);
+    }
+    if (restartButton) {
+        restartButton.setVisible(true);
+    }
+    if (feedbackButton) {
+        feedbackButton.setVisible(true);
     }
 }
 
@@ -1426,7 +1515,7 @@ const GameCanvas: React.FC = () => {
         <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <ShopModal isVisible={showShopModal} onClose={closeShopModal} level={currentLevel} skills={skills} />
             {/* Phaser 씬의 재시작 버튼 대신 React 버튼을 사용할 수도 있습니다. */}
-            <button onClick={handleRestartGame}>Restart Game (React)</button>
+            {/* <button onClick={handleRestartGame}>Restart Game (React)</button> */}
         </div>
     );
 };
