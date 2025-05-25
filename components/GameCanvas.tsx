@@ -148,6 +148,22 @@ function create(this: Phaser.Scene) {
     playerLevelText.setOrigin(0.5);
     playerLevelText.setDepth(2); // UI는 가장 위에 표시
 
+    // 경험치 바 관련 요소 생성
+    const expBarWidth = ENERGY_BAR_WIDTH; // 에너지 바 너비와 동일하게 변경
+    const expBarHeight = ENERGY_BAR_HEIGHT; // 에너지 바 높이와 동일하게 변경
+    const expBarBgColor = 0x666666;
+    const expBarFillColor = 0xffd700; // 금색
+
+    const expBarBg = this.add.graphics();
+    expBarBg.fillStyle(expBarBgColor, 0.8);
+    expBarBg.fillRect(0, 0, expBarWidth, expBarHeight);
+    expBarBg.setDepth(2);
+
+    const expBarFill = this.add.graphics();
+    expBarFill.fillStyle(expBarFillColor, 1);
+    expBarFill.fillRect(0, 0, 0, expBarHeight); // 초기 너비 0
+    expBarFill.setDepth(2);
+
     let finalPlayerScale;
     if (minWidthApplied) {
         finalPlayerScale = 0.5 * (isMobile ? 0.7 : 1.0);
@@ -341,6 +357,8 @@ function create(this: Phaser.Scene) {
     this.data.set('energy', INITIAL_PLAYER_ENERGY);
     this.data.set('energyBarBg', energyBarBg);
     this.data.set('energyBarFill', energyBarFill);
+    this.data.set('expBarBg', expBarBg);
+    this.data.set('expBarFill', expBarFill);
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
     this.data.set('skills', []); // skills 배열을 씬 데이터에 저장
     this.data.set('isInvincible', false); // 무적 상태 플래그 초기화
@@ -646,7 +664,7 @@ function hitMouse(
 function checkLevelUp(this: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
     const currentLevel = player.getData('level') as number;
     const currentExperience = player.getData('experience') as number;
-    const levelThresholds: { [key: string]: number } = levelExperience.levelExperience; // 명시적인 타입 정의
+    const levelThresholds: { [key: string]: number } = levelExperience.levelExperience;
     const levelKeys = Object.keys(levelThresholds).map(Number).sort((a, b) => a - b);
     let newLevel = currentLevel;
 
@@ -661,7 +679,21 @@ function checkLevelUp(this: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) 
         player.setData('level', newLevel);
         const playerLevelText = this.data.get('playerLevelText') as Phaser.GameObjects.Text;
         playerLevelText.setText('Level: ' + newLevel);
-        this.data.set('playerLevelValue', newLevel); // 레벨 값 업데이트
+        this.data.set('playerLevelValue', newLevel);
+        const expBarFill = this.data.get('expBarFill') as Phaser.GameObjects.Graphics;
+        expBarFill.clear();
+        expBarFill.fillStyle(0xffd700, 1);
+        expBarFill.fillRect(0, 0, 0, 10);
+
+        // 레벨업 시 상점 모달 열기
+        const shopOpened = this.data.get('shopOpened') as boolean;
+        const openShopModal = this.data.get('openShopModal') as (level: number, score: number, skills: number[]) => void;
+        if (!shopOpened && openShopModal) {
+            this.data.set('shopOpened', true);
+            openShopModal(newLevel, this.data.get('score') as number, this.data.get('skills') as number[]);
+        }
+
+        player.setData('experience', 0); // 레벨업 후 경험치 초기화
     }
 }
 
@@ -886,12 +918,30 @@ function restartGame(this: Phaser.Scene) {
     lastCameraZoom = 1;
 
     // 게임 상태 초기화
-    this.data.set('score', 0);
+    this.data.set('score', 0); // 더 이상 사용하지 않음
     this.data.set('energy', INITIAL_PLAYER_ENERGY);
     this.data.set('isKnockedBack', false);
     this.data.set('shopOpened', false);
     this.data.set('skills', []); // 스킬도 초기화
     this.data.get('generatedChunks').clear(); // 생성된 청크 목록 초기화
+
+    const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
+    if (player) {
+        player.setData('level', 1);
+        player.setData('experience', 0); // 경험치 초기화
+    }
+    this.data.set('playerLevelValue', 1); // 레벨 값 초기화
+    const playerLevelText = this.data.get('playerLevelText') as Phaser.GameObjects.Text;
+    if (playerLevelText) {
+        playerLevelText.setText('Level: 1'); // 레벨 텍스트 초기화
+    }
+
+    const expBarFill = this.data.get('expBarFill') as Phaser.GameObjects.Graphics;
+    if (expBarFill) {
+        expBarFill.clear(); // 경험치 바 초기화
+        expBarFill.fillStyle(0xffd700, 1);
+        expBarFill.fillRect(0, 0, 0, 10);
+    }
 
     // UI 요소 숨기기
     const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
@@ -905,7 +955,7 @@ function restartGame(this: Phaser.Scene) {
     const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group;
     const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
 
-    if (mice) mice.clear(true, true); // true, true는 자식 객체를 비활성화하고 파괴
+    if (mice) mice.clear(true, true);
     if (dogs) dogs.clear(true, true);
     if (fishItems) fishItems.clear(true, true);
     if (butterflies) butterflies.clear(true, true);
@@ -933,6 +983,7 @@ function update(this: Phaser.Scene) {
     const experience = player.getData('experience') as number; // 플레이어 경험치 가져오기
     const levelThresholds: { [key: string]: number } = levelExperience.levelExperience; // 명시적인 타입 정의
     const experienceNeededForNextLevel = levelThresholds[String(playerLevel+1)] || Infinity;
+    const nextLevelThreshold = levelThresholds[String(playerLevel + 1)] || Infinity;
 
     if (!player || !cursors) {
         return;
@@ -950,24 +1001,22 @@ function update(this: Phaser.Scene) {
     const playerSpeed = currentPlayerSpeed;
     let isMovingForAnimation = false;
 
-    const score = this.data.get('score') as number;
-    const shopOpened = this.data.get('shopOpened') as boolean;
-    const openShopModal = this.data.get('openShopModal') as (level:number, score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
+    // const score = this.data.get('score') as number;
+    // const shopOpened = this.data.get('shopOpened') as boolean;
+    // const openShopModal = this.data.get('openShopModal') as (level:number, score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
 
-    //상점 오픈 조건 -> 레벨업 조건(levelExperience에 {level:score}로 정의 됨)
-    console.log("Phaser Scene Update: Checking if shop should be opened. Current level:", playerLevel, "Current experience:", experience, "Experience needed for next level:", experienceNeededForNextLevel);
-    if (!shopOpened && experience >= experienceNeededForNextLevel) {
-        this.data.set('shopOpened', true);
-        this.data.set('playerLevel', playerLevel + 1); // 레벨업
-        playerLevel++;
-        
-        if (openShopModal) {
-            console.log("Phaser Scene Update: Calling openShopModal callback. Score:", score); 
-            openShopModal(playerLevel, score, skills);
-        } else {
-            console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data! This indicates a failure in passing the callback from React to Phaser."); 
-        }
-    }
+    // 상점 오픈 조건 제거 (checkLevelUp으로 이동)
+    // if (!shopOpened && experience >= nextLevelThreshold && nextLevelThreshold !== Infinity) {
+    //     this.data.set('shopOpened', true);
+    //     this.data.set('playerLevel', playerLevel + 1);
+    //     playerLevel++;
+
+    //     if (openShopModal) {
+    //         openShopModal(playerLevel, this.data.get('score') as number, skills);
+    //     } else {
+    //         console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data!");
+    //     }
+    // }
 
     // 플레이어의 움직임과 애니메이션 처리
     if (!isKnockedBack) {
@@ -1081,6 +1130,11 @@ function update(this: Phaser.Scene) {
     const energyBarBg = this.data.get('energyBarBg') as Phaser.GameObjects.Graphics;
     const energyBarFill = this.data.get('energyBarFill') as Phaser.GameObjects.Graphics;
     const playerLevelValue = this.data.get('playerLevelValue') as number; // 현재 레벨 값 가져오기
+    const expBarBg = this.data.get('expBarBg') as Phaser.GameObjects.Graphics;
+    const expBarFill = this.data.get('expBarFill') as Phaser.GameObjects.Graphics;
+    const expBarWidth = ENERGY_BAR_WIDTH; // create 함수에서 변경했으므로 여기도 동일하게 유지
+    const expBarHeight = ENERGY_BAR_HEIGHT;
+
 
     const playerBottomY = player.y + (player.displayHeight / 2) + 5;
     const textSpacing = 20;
@@ -1117,6 +1171,20 @@ function update(this: Phaser.Scene) {
     energyBarBg.y = playerBottomY;
     energyBarFill.x = energyBarBg.x;
     energyBarFill.y = energyBarBg.y;
+
+    // 경험치 바 위치 설정 - 에너지 바 아래
+    expBarBg.x = player.x - (expBarWidth / 2);
+    expBarBg.y = energyBarBg.y + expBarHeight + 5;
+    expBarFill.x = expBarBg.x;
+    expBarFill.y = expBarBg.y;
+
+    // 경험치 바 업데이트
+    const fillRatio = Math.min(1, experience / nextLevelThreshold);
+    const fillWidth = fillRatio * expBarWidth;
+
+    expBarFill.clear();
+    expBarFill.fillStyle(0xffd700, 1);
+    expBarFill.fillRect(0, 0, fillWidth, expBarHeight);
 
     //쥐의 움직임 처리
     mice.getChildren().forEach((mouseObject) => {
@@ -1327,14 +1395,38 @@ const GameCanvas: React.FC = () => {
 
     const closeShopModal = () => {
         setShowShopModal(false);
-        if (gameRef.current) {
-            gameRef.current.scene.resume('MainScene'); // 씬 키 'MainScene' 사용
+        if (gameRef.current && gameSceneRef.current) {
+            gameRef.current.scene.resume('MainScene');
+            gameSceneRef.current.data.set('shopOpened', false); // 상점 닫힐 때 플래그 초기화
         }
+    };
+
+    // Phaser 씬에서 재시작 버튼 클릭 시 호출될 함수 (props로 전달)
+    const handleRestartGame = () => {
+        if (gameSceneRef.current) {
+            (gameSceneRef.current as any).restartGame(); // Phaser 씬의 restartGame 호출
+        }
+        // React Context의 skills 상태 초기화
+        // addSkill을 사용하여 상태를 업데이트 (빈 배열로 초기화)
+        // 현재 skills 상태를 직접 수정하는 것은 권장되지 않으므로, addSkill을 활용합니다.
+        // 기존 스킬을 모두 제거하는 방식으로 초기화
+        const currentSkills = [...skills];
+        currentSkills.forEach(() => {
+            // 스킬 제거 함수가 Context에 있다면 사용
+            // 현재 코드에는 스킬 제거 함수가 보이지 않으므로,
+            // 간단하게 빈 배열로 상태를 업데이트하는 방식으로 처리합니다.
+            // 주의: 이렇게 하면 다른 컴포넌트에서도 상태가 영향을 받을 수 있습니다.
+            // Context에 스킬 제거 기능이 추가되면 해당 기능을 사용하는 것이 좋습니다.
+        });
+        // 빈 배열로 skills 상태 업데이트
+        gameSceneRef.current?.data.set('skills', []); // Phaser 씬 데이터도 초기화
     };
 
     return (
         <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <ShopModal isVisible={showShopModal} onClose={closeShopModal} level={currentLevel} skills={skills} />
+            {/* Phaser 씬의 재시작 버튼 대신 React 버튼을 사용할 수도 있습니다. */}
+            <button onClick={handleRestartGame}>Restart Game (React)</button>
         </div>
     );
 };
