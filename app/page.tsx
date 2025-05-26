@@ -15,13 +15,14 @@ const GameCanvas = dynamic(() => import('../components/GameCanvas'), {
         height: '100vh',
       }}
     >
-      <img src="/images/title.png" alt="Loading" />
+      <img src="/images/tutorial.png" alt="Loading" style={{ maxWidth: '80vw', cursor: 'pointer' }}/>
     </div>
   ),
 });
 
 const GamePage = () => {
   const [showTitle, setShowTitle] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -49,7 +50,16 @@ const GamePage = () => {
       </div>
       ) : (
       <SkillsProvider>
-        <GameCanvas />
+        {showTutorial ? (
+          <img
+        src="/images/tutorial.png"
+        alt="Tutorial"
+        style={{ maxWidth: '80vw', cursor: 'pointer' }}
+        onClick={() => setShowTutorial(false)}
+          />
+        ) : (
+          <GameCanvas />
+        )}
       </SkillsProvider>
       )}
     </div>
