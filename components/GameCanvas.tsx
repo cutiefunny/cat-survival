@@ -654,30 +654,55 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
 //개를 생성하는 함수
 function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
     const camera = this.cameras.main;
-    // 개를 현재 카메라 뷰 밖의 랜덤 위치에 생성
-    const edge = Phaser.Math.Between(0, 3);
     let x: number, y: number;
-    const buffer = 50; // 화면 밖으로 좀 더 떨어진 곳에 생성
+    let attempts = 0;
+    const maxAttempts = 10;
+    const separationDistance = 120;
 
-    switch (edge) {
-        case 0: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.top - buffer; break; // 상단
-        case 1: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.bottom + buffer; break; // 하단
-        case 2: x = camera.worldView.left - buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 좌측
-        case 3: x = camera.worldView.right + buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break; // 우측
-        default: x = 0; y = 0; break;
-    }
+    do {
+        const edge = Phaser.Math.Between(0, 3);
+        const buffer = 100;
+        switch (edge) {
+            case 0: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.top - buffer; break;
+            case 1: x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right); y = camera.worldView.bottom + buffer; break;
+            case 2: x = camera.worldView.left - buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break;
+            case 3: x = camera.worldView.right + buffer; y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom); break;
+            default: x = 0; y = 0; break;
+        }
+        attempts++;
+        if (attempts > maxAttempts) break;
 
-    const dog = dogs.create(x, y, 'dog_enemy_sprite') as CustomDogSprite; // CustomDogSprite로 캐스팅
+    } while (isDogOverlapping(this, x, y, separationDistance));
+
+    const dog = dogs.create(x, y, 'dog_enemy_sprite') as CustomDogSprite;
     dog.setBounce(0.2);
-    dog.setCollideWorldBounds(false); // 월드 경계 충돌 비활성화
+    dog.setCollideWorldBounds(false);
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     const spriteScaleFactor = minWidthApplied ? 0.7 : (isMobile ? 0.7 : 1.0);
     dog.setScale(0.5 * spriteScaleFactor);
     dog.play('dog_walk');
-    dog.isKnockedBack = false; // 기본적으로 넉백 상태가 아님
-    dog.isStunned = false; // 기본적으로 기절 상태가 아님
-    dog.setDepth(1); // 개 depth 설정
+    dog.isKnockedBack = false;
+    dog.isStunned = false;
+    dog.setDepth(1);
+}
+
+// 개가 생성될 때 다른 개와 겹치지 않도록 확인하는 함수
+function isDogOverlapping(scene: Phaser.Scene, x: number, y: number, separationDistance: number): boolean {
+    const dogs = scene.data.get('dogs') as Phaser.Physics.Arcade.Group;
+    let overlapping = false;
+
+    dogs.getChildren().forEach((existingDogObject) => {
+        const existingDog = existingDogObject as Phaser.Physics.Arcade.Sprite;
+        if (existingDog.active) {
+            const distance = Phaser.Math.Distance.Between(x, y, existingDog.x, existingDog.y);
+            if (distance < separationDistance) {
+                overlapping = true;
+            }
+        }
+    });
+
+    return overlapping;
 }
 
 //쥐를 잡았을 때 처리하는 함수
@@ -1054,7 +1079,7 @@ function restartGame(this: Phaser.Scene) {
 }
 
 //게임 업데이트 함수
-function update(this: Phaser.Scene) {
+function update(this: Phaser.Scene, time: number, delta: number) {
     if (gameOver) {
         return;
     }
@@ -1287,40 +1312,78 @@ function update(this: Phaser.Scene) {
         }
     });
 
+    let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.05);
+    const wanderSpeed = dogChaseSpeed * 1.3; // 흩어지는 속도
+
     //개의 움직임 처리
     dogs.getChildren().forEach((dogObject) => {
-        //const dog = dogObject as Phaser.Physics.Arcade.Sprite;
-        let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
-        let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.05); // 레벨에 따라 속도 증가
-        const dog = dogObject as CustomDogSprite; // CustomDogSprite로 캐스팅
-        if (dog.active && dog.body && !dog.isKnockedBack && !dog.isStunned) { // 넉백이나 기절 상태가 아닐 때만 움직임 처리
-            // 겹침 방지 로직 추가
-            let overlapping = false;
+        const dog = dogObject as CustomDogSprite;
+        if (dog.active && dog.body && !dog.isKnockedBack && !dog.isStunned) {
+            let aiState = dog.getData('aiState') || 0; // 기본 상태는 0 (일반 추격)
+            let strategicTimer = dog.getData('strategicTimer') || 0;
+
+            if (aiState === 0 && Math.random() < 0.001) { // 낮은 확률 (0.1% 정도로 조정)로 전략적 움직임 시작
+                dog.setData('aiState', 1);
+                dog.setData('wanderTarget', new Phaser.Math.Vector2(dog.x + Phaser.Math.Between(-200, 200), dog.y + Phaser.Math.Between(-200, 200)));
+                dog.setData('strategicTimer', 0); // 타이머 초기화
+            }
+
+            if (aiState === 0) {
+                this.physics.moveToObject(dog, player, dogChaseSpeed);
+            } else if (aiState === 1) {
+                const wanderTarget = dog.getData('wanderTarget') as Phaser.Math.Vector2;
+
+                if (Phaser.Math.Distance.Between(dog.x, dog.y, wanderTarget.x, wanderTarget.y) < 20) {
+                    dog.setData('aiState', 2); // 목표 지점 도착 후 잠시 멈춤 상태로 변경
+                    dog.setData('strategicTimer', 0);
+                    dog.setVelocity(0);
+                    dog.body.checkCollision.none = false; // 상태 변경 후 충돌 다시 활성화
+                } else {
+                    this.physics.moveToObject(dog, wanderTarget, wanderSpeed);
+                }
+            } else if (aiState === 2) {
+                strategicTimer += delta;
+                dog.setData('strategicTimer', strategicTimer);
+                if (strategicTimer > 2000) { // 2초 후 원래 추격 상태로 복귀
+                    dog.setData('aiState', 0);
+                } else {
+                    // // 잠시 멈춤
+                    // if (dog.body) {
+                    //     dog.setVelocity(0);
+                    // }
+                    return;
+                }
+            }
+
+            // 겹침 방지 (기존 코드 유지)
             dogs.getChildren().forEach((otherDogObject) => {
                 if (dogObject !== otherDogObject) {
                     const otherDog = otherDogObject as CustomDogSprite;
-                    if (otherDog.active && otherDog.body) {
+                    if (otherDog.active && otherDog.body && !otherDog.isStunned && !otherDog.isKnockedBack) {
                         const distance = Phaser.Math.Distance.Between(dog.x, dog.y, otherDog.x, otherDog.y);
-                        if (distance < 50) { // 50픽셀 이내로 가까우면 겹침으로 판단
-                            overlapping = true;
+                        const overlapThreshold = 60;
+                        const pushForce = 50;
+
+                        if (distance < overlapThreshold) {
+                            const pushDirection = new Phaser.Math.Vector2(dog.x - otherDog.x, dog.y - otherDog.y).normalize();
+                            if (dog.body) {
+                                dog.setVelocityX(dog.body.velocity.x + pushDirection.x * pushForce);
+                                dog.setVelocityY(dog.body.velocity.y + pushDirection.y * pushForce);
+                            }
+                            if (otherDog.body) {
+                                otherDog.setVelocityX(otherDog.body.velocity.x - pushDirection.x * pushForce);
+                                otherDog.setVelocityY(otherDog.body.velocity.y - pushDirection.y * pushForce);
+                            }
                         }
                     }
                 }
             });
 
-            if (overlapping) {
-
-                const speed = Phaser.Math.Between(0.5, 1.5) * dogChaseSpeed; // 50%에서 150% 사이 랜덤 속도
-                this.physics.moveToObject(dog, player, speed); // 플레이어를 향해 이동
-            } else {
-                // 겹쳐있지 않다면 플레이어를 향해 이동
-                this.physics.moveToObject(dog, player, dogChaseSpeed);
-            }
-
+            // 스프라이트 방향 업데이트 (기존 코드 유지)
             if (dog.body.velocity.x < 0) {
-            dog.setFlipX(false);
+                dog.setFlipX(false);
             } else if (dog.body.velocity.x > 0) {
-            dog.setFlipX(true);
+                dog.setFlipX(true);
             }
         }
     });
@@ -1359,14 +1422,48 @@ function update(this: Phaser.Scene) {
             // 나비의 x축 속도에 따라 스프라이트 뒤집기
             if (butterfly.body.velocity.x < 0) {
                 butterfly.setFlipX(false);
-            } else if (butterfly.body.velocity.x > 0) {
-                butterfly.setFlipX(true);
             }
         }
     });
 
     // 플레이어 위치에 따라 새로운 청크 생성
     generateSurroundingChunks.call(this, player.x, player.y);
+}
+
+// 개 AI 업데이트 함수
+function updateDogAI(this: Phaser.Scene, dog: CustomDogSprite, player: Phaser.Physics.Arcade.Sprite, delta: number, dogChaseSpeed: number, wanderSpeed: number) {
+    if (!dog.active || !dog.body || dog.isKnockedBack || dog.isStunned) {
+        return;
+    }
+
+    player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
+    const aiState = dog.getData('aiState');
+
+    if (aiState === 0) {
+        // 일반 추격
+        this.physics.moveToObject(dog, player, dogChaseSpeed);
+    } else if (aiState === 1) {
+        const wanderTarget = dog.getData('wanderTarget') as Phaser.Math.Vector2;
+        let wanderDelay = dog.getData('wanderDelay') as number;
+
+        // 흩어지는 행동
+        if (Phaser.Math.Distance.Between(dog.x, dog.y, wanderTarget.x, wanderTarget.y) < 20) {
+            wanderDelay += delta;
+            if (wanderDelay > 2000) { // 2초 동안 흩어짐
+                dog.setData('aiState', 2); // 추격 상태로 변경
+                dog.setData('wanderDelay', 0);
+            } else {
+                if (dog.body) {
+                    dog.setVelocity(0); // 잠시 멈춤
+                }
+                return;
+            }
+        } else {
+            this.physics.moveToObject(dog, wanderTarget, wanderSpeed);
+        }
+    } else if (aiState === 2) {
+        this.physics.moveToObject(dog, player, dogChaseSpeed * 1.2); // 약간 더 빠르게 추격
+    }
 }
 
 const GameCanvas: React.FC = () => {
@@ -1521,3 +1618,4 @@ const GameCanvas: React.FC = () => {
 };
 
 export default GameCanvas;
+
