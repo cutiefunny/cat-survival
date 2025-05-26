@@ -54,7 +54,7 @@ const GamePage = () => {
           <img
         src="/images/tutorial.png"
         alt="Tutorial"
-        style={{ maxWidth: '80vw', cursor: 'pointer' }}
+        style={{ maxWidth: '80vw', maxHeight: '80vh', cursor: 'pointer' }}
         onClick={() => setShowTutorial(false)}
           />
         ) : (

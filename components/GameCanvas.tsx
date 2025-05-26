@@ -5,6 +5,7 @@ import * as Phaser from 'phaser';
 import ShopModal from './shopModal'; // ShopModal.tsx 파일 경로에 맞게 수정해주세요.
 import { SkillsProvider, useSkills } from './SkillsContext'; // SkillsContext 임포트
 import levelExperience from '../public/levelSetting.json'; // 레벨 경험치 설정을 가져옵니다.
+import GameOverModal from './GameOverModal';
 
 function getGameDimensions() {
     if (typeof window !== 'undefined') {
@@ -957,6 +958,8 @@ function endGame(this: Phaser.Scene) {
     this.time.removeAllEvents();
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
+    const score = this.data.get('score') as number; // 현재 점수 가져오기
+    const triggerGameOverModal = this.data.get('triggerGameOverModal') as (score: number) => void; // React에서 전달한 함수 가져오기
 
     if (player) {
         player.stop();
@@ -967,59 +970,15 @@ function endGame(this: Phaser.Scene) {
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const fishItems = this.data.get('fishItems') as Phaser.Physics.Arcade.Group;
     const butterflies = this.data.get('butterflies') as Phaser.Physics.Arcade.Group;
-    const gameOverText = this.data.get('gameOverText') as Phaser.GameObjects.Text;
-    const restartButton = this.data.get('restartButton') as Phaser.GameObjects.Text;
 
     if (mice) mice.getChildren().forEach((mouse) => (mouse.body as any)?.stop());
     if (dogs) dogs.getChildren().forEach((dog) => (dog.body as any)?.stop());
     if (fishItems) fishItems.getChildren().forEach((fish) => (fish.body as any)?.stop());
     if (butterflies) butterflies.getChildren().forEach((butterfly) => (butterfly.body as any)?.stop());
 
-    if (gameOverText) {
-        gameOverText.setVisible(true);
-    }
-    if (restartButton) {
-        restartButton.setVisible(true);
-    }
-
-    // cat_cry 이미지 추가
-    const cryImage = this.add.image(this.cameras.main.centerX, this.cameras.main.centerY - 50, 'cat_cry');
-    cryImage.setOrigin(0.5);
-    cryImage.setScrollFactor(0);
-    cryImage.setDepth(2); // gameOverText 위에 표시
-    cryImage.setScale(1); // 필요에 따라 크기 조정
-
-    // 피드백 버튼 생성
-    const feedbackButton = this.add.text(
-        this.cameras.main.centerX,
-        this.cameras.main.centerY + 200, // 재시작 버튼 아래에 위치
-        '피드백 보내기(클릭)',
-        {
-            fontSize: '20px',
-            color: '#ffffff',
-            // backgroundColor: '#000000', // 배경색 제거
-        }
-    );
-    feedbackButton.setOrigin(0.5);
-    feedbackButton.setScrollFactor(0);
-    feedbackButton.setInteractive(); // 클릭 가능하도록 설정
-    feedbackButton.setVisible(false); // 초기에는 보이지 않도록 설정
-    feedbackButton.on('pointerdown', () => {
-        // 피드백 URL로 이동
-        window.open('https://github.com/cutiefunny/cat-survival/issues', '_blank');
-    });
-    feedbackButton.setDepth(3); // 피드백 버튼도 최상단
-
-    this.data.set('feedbackButton', feedbackButton); // 피드백 버튼 씬 데이터에 저장
-
-    if (gameOverText) {
-        gameOverText.setVisible(true);
-    }
-    if (restartButton) {
-        restartButton.setVisible(true);
-    }
-    if (feedbackButton) {
-        feedbackButton.setVisible(true);
+    // React 컴포넌트의 GameOverModal을 트리거합니다.
+    if (triggerGameOverModal) {
+        triggerGameOverModal(score); // 현재 점수를 전달
     }
 }
 
@@ -1114,23 +1073,6 @@ function update(this: Phaser.Scene, time: number, delta: number) {
 
     const playerSpeed = currentPlayerSpeed;
     let isMovingForAnimation = false;
-
-    // const score = this.data.get('score') as number;
-    // const shopOpened = this.data.get('shopOpened') as boolean;
-    // const openShopModal = this.data.get('openShopModal') as (level:number, score: number, skills: number[]) => void; // React에서 전달된 콜백 함수
-
-    // 상점 오픈 조건 제거 (checkLevelUp으로 이동)
-    // if (!shopOpened && experience >= nextLevelThreshold && nextLevelThreshold !== Infinity) {
-    //     this.data.set('shopOpened', true);
-    //     this.data.set('playerLevel', playerLevel + 1);
-    //     playerLevel++;
-
-    //     if (openShopModal) {
-    //         openShopModal(playerLevel, this.data.get('score') as number, skills);
-    //     } else {
-    //         console.error("Phaser Scene Update: openShopModal callback is UNDEFINED in scene data!");
-    //     }
-    // }
 
     // 플레이어의 움직임과 애니메이션 처리
     if (!isKnockedBack) {
@@ -1430,42 +1372,6 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     generateSurroundingChunks.call(this, player.x, player.y);
 }
 
-// 개 AI 업데이트 함수
-function updateDogAI(this: Phaser.Scene, dog: CustomDogSprite, player: Phaser.Physics.Arcade.Sprite, delta: number, dogChaseSpeed: number, wanderSpeed: number) {
-    if (!dog.active || !dog.body || dog.isKnockedBack || dog.isStunned) {
-        return;
-    }
-
-    player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
-    const aiState = dog.getData('aiState');
-
-    if (aiState === 0) {
-        // 일반 추격
-        this.physics.moveToObject(dog, player, dogChaseSpeed);
-    } else if (aiState === 1) {
-        const wanderTarget = dog.getData('wanderTarget') as Phaser.Math.Vector2;
-        let wanderDelay = dog.getData('wanderDelay') as number;
-
-        // 흩어지는 행동
-        if (Phaser.Math.Distance.Between(dog.x, dog.y, wanderTarget.x, wanderTarget.y) < 20) {
-            wanderDelay += delta;
-            if (wanderDelay > 2000) { // 2초 동안 흩어짐
-                dog.setData('aiState', 2); // 추격 상태로 변경
-                dog.setData('wanderDelay', 0);
-            } else {
-                if (dog.body) {
-                    dog.setVelocity(0); // 잠시 멈춤
-                }
-                return;
-            }
-        } else {
-            this.physics.moveToObject(dog, wanderTarget, wanderSpeed);
-        }
-    } else if (aiState === 2) {
-        this.physics.moveToObject(dog, player, dogChaseSpeed * 1.2); // 약간 더 빠르게 추격
-    }
-}
-
 const GameCanvas: React.FC = () => {
     const gameContainerRef = useRef<HTMLDivElement>(null);
     const gameSceneRef = useRef<Phaser.Scene | null>(null); // gameScene ref 생성
@@ -1474,6 +1380,8 @@ const GameCanvas: React.FC = () => {
     const [currentScore, setCurrentScore] = useState(0);
     const { skills } = useSkills(); // skills 배열을 React Context에서 가져옴
     const [currentLevel, setCurrentLevel] = useState(1); // 현재 레벨 상태 추가
+    const [showGameOverModal, setShowGameOverModal] = useState(false); // 게임 오버 모달 상태
+    const [finalScore, setFinalScore] = useState(0); // 게임 오버 시 점수 저장
     console.log('GameCanvas: skills from context:', skills); // skills 배열 확인
 
     useEffect(() => {
@@ -1486,6 +1394,7 @@ const GameCanvas: React.FC = () => {
             const initialDataForScene: {
                 minWidthApplied: boolean;
                 openShopModal: (level: number, score: number, skills: number[], closeShop: () => void) => void; // closeShop 추가
+                triggerGameOverModal: (score: number) => void; // 게임 오버 모달 트리거 함수
             } = {
                 minWidthApplied: minWidthApplied,
                 openShopModal: (level: number, score: number, skills: number[], closeShop: () => void) => { // closeShop 받음
@@ -1493,6 +1402,14 @@ const GameCanvas: React.FC = () => {
                     setShowShopModal(true);
                     setCurrentScore(score);
                     setCurrentLevel(level);
+                    if (gameRef.current) {
+                        gameRef.current.scene.pause('MainScene');
+                    }
+                },
+                triggerGameOverModal: (score: number) => { // 게임 오버 모달 트리거 함수 정의
+                    console.log("React: triggerGameOverModal callback called from Phaser. Score:", score);
+                    setShowGameOverModal(true);
+                    setFinalScore(score);
                     if (gameRef.current) {
                         gameRef.current.scene.pause('MainScene');
                     }
@@ -1525,6 +1442,7 @@ const GameCanvas: React.FC = () => {
                     // minWidthApplied와 openShopModal 콜백을 씬의 data manager에 직접 설정
                     gameScene.data.set('minWidthApplied', initialDataForScene.minWidthApplied);
                     gameScene.data.set('openShopModal', initialDataForScene.openShopModal);
+                    gameScene.data.set('triggerGameOverModal', initialDataForScene.triggerGameOverModal); // 트리거 함수 전달
                     gameScene.data.set('skills', skills); // 초기 skills 값 저장 (React 컴포넌트의 skills)
                     console.log("Scene data for shop modal set successfully.");
                 } else {
@@ -1589,28 +1507,61 @@ const GameCanvas: React.FC = () => {
 
     // Phaser 씬에서 재시작 버튼 클릭 시 호출될 함수 (props로 전달)
     const handleRestartGame = () => {
-        if (gameSceneRef.current) {
-            (gameSceneRef.current as any).restartGame(); // Phaser 씬의 restartGame 호출
+        if (gameSceneRef.current && gameSceneRef.current.scene) { // gameSceneRef.current와 gameSceneRef.current.scene이 유효한지 확인
+            console.log('Attempting to restart Phaser scene...');
+            gameSceneRef.current.scene.restart(); // Phaser 씬의 ScenePlugin을 통해 restart 호출
+            
+            // React Context의 skills 상태 초기화
+            // 참고: 현재 skills를 초기화하는 로직이 비어있거나 불완전해 보입니다.
+            // useSkills()에서 제공하는 초기화 함수가 있다면 그것을 사용하는 것이 좋습니다.
+            // 예시: clearSkills(); 또는 setSkills([]);
+            // 아래는 Phaser 씬 데이터의 스킬을 초기화하는 코드입니다.
+            if (gameSceneRef.current.data) {
+                 gameSceneRef.current.data.set('skills', []); // Phaser 씬의 skills 데이터 초기화
+                 gameSceneRef.current.data.set('playerLevel', 1);
+                 gameSceneRef.current.data.set('score', 0);
+                 gameSceneRef.current.data.set('energy', INITIAL_PLAYER_ENERGY); // INITIAL_PLAYER_ENERGY는 스킬에 따라 변경될 수 있으므로, 초기값으로 리셋 필요
+                 // 기타 게임 상태 초기화 (Phaser의 restartGame 함수 내의 로직과 유사하게)
+                 gameSceneRef.current.data.set('shopOpened', false);
+                 const generatedChunks = gameSceneRef.current.data.get('generatedChunks');
+                 if (generatedChunks && typeof generatedChunks.clear === 'function') {
+                    generatedChunks.clear();
+                 }
+            }
+
+            setShowGameOverModal(false); // 게임 오버 모달 닫기
+
+            // 씬이 실제로 재시작되고 준비된 후 resume을 호출하는 것이 더 안정적일 수 있지만,
+            // Phaser의 restart는 내부적으로 기존 씬을 종료하고 새로 시작하므로,
+            // pause된 상태였다면 resume이 필요할 수 있습니다.
+            // 다만, restart()가 호출되면 씬은 이미 active 상태로 돌아가므로 resume이 불필요하거나 오류를 유발할 수 있습니다.
+            // 우선 아래 resume 로직은 주석 처리하고 테스트해보시는 것을 권장합니다.
+            /*
+            if (gameRef.current && gameRef.current.scene.isPaused('MainScene')) {
+                 console.log('Resuming MainScene after restart attempt.');
+                 gameRef.current.scene.resume('MainScene');
+            }
+            */
+        } else {
+            console.error("gameSceneRef.current or gameSceneRef.current.scene is null, cannot restart game.");
         }
-        // React Context의 skills 상태 초기화
-        // addSkill을 사용하여 상태를 업데이트 (빈 배열로 초기화)
-        // 현재 skills 상태를 직접 수정하는 것은 권장되지 않으므로, addSkill을 활용합니다.
-        // 기존 스킬을 모두 제거하는 방식으로 초기화
-        const currentSkills = [...skills];
-        currentSkills.forEach(() => {
-            // 스킬 제거 함수가 Context에 있다면 사용
-            // 현재 코드에는 스킬 제거 함수가 보이지 않으므로,
-            // 간단하게 빈 배열로 상태를 업데이트하는 방식으로 처리합니다.
-            // 주의: 이렇게 하면 다른 컴포넌트에서도 상태가 영향을 받을 수 있습니다.
-            // Context에 스킬 제거 기능이 추가되면 해당 기능을 사용하는 것이 좋습니다.
-        });
-        // 빈 배열로 skills 상태 업데이트
-        gameSceneRef.current?.data.set('skills', []); // Phaser 씬 데이터도 초기화
     };
 
     return (
         <div id="game-container" ref={gameContainerRef} style={{ width: '100vw', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <ShopModal isVisible={showShopModal} onClose={closeShopModal} level={currentLevel} skills={skills} />
+            <GameOverModal
+            isVisible={showGameOverModal}
+            onClose={() => { // GameOverModal의 '재시작' 버튼 클릭 시 이 함수가 호출됩니다.
+                handleRestartGame();
+                // setShowGameOverModal(false); // handleRestartGame 내부에서 처리하도록 변경
+            }}
+            score={finalScore}
+            onSave={(name: string) => {
+                console.log(`Saving score with name: ${name}`);
+                // 저장 후 재시작 또는 모달만 닫기 등의 로직 추가 가능
+            }}
+            />
             {/* Phaser 씬의 재시작 버튼 대신 React 버튼을 사용할 수도 있습니다. */}
             {/* <button onClick={handleRestartGame}>Restart Game (React)</button> */}
         </div>
