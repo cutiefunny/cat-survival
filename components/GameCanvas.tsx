@@ -539,7 +539,7 @@ function spawnDogVillain(this: Phaser.Scene) {
     if (gameOver) return;
 
     let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
-    const maxActiveDogs = MAX_ACTIVE_DOGS + playerLevel - 1; // 레벨에 따라 최대 개 개수 증가
+    const maxActiveDogs = MAX_ACTIVE_DOGS + playerLevel; // 레벨에 따라 최대 개 개수 증가
 
     const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
@@ -750,6 +750,7 @@ function checkLevelUp(this: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) 
         }
     }
 
+    // 레벨업 처리
     if (newLevel > currentLevel) {
         console.log(`Level Up! From ${currentLevel} to ${newLevel}`);
         player.setData('level', newLevel);
@@ -1254,7 +1255,7 @@ function update(this: Phaser.Scene, time: number, delta: number) {
         }
     });
 
-    let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.05);
+    let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.10) * (1 + Math.floor(elapsedTime / 60) * 0.1);
     const wanderSpeed = dogChaseSpeed * 1.3; // 흩어지는 속도
 
     //개의 움직임 처리
