@@ -88,6 +88,15 @@ const ENERGY_BAR_HEIGHT = 8;
 const ENERGY_BAR_COLOR_BG = 0x808080;
 const ENERGY_BAR_COLOR_FILL = 0x00ff00;
 
+const SHOCKWAVE_SKILL_ID = 51;
+const SHOCKWAVE_INTERVAL_MS = 10000; // 10초
+const SHOCKWAVE_RADIUS_START = 20;  // 충격파 시작 시 반지름
+const SHOCKWAVE_RADIUS_END = 300;    // 충격파 최대 반지름
+const SHOCKWAVE_DURATION_MS = 500;   // 충격파 시각 효과 지속 시간
+const SHOCKWAVE_PUSH_FORCE = 500;   // 적을 밀어내는 힘
+const SHOCKWAVE_COLOR = 0xADD8E6;   // 충격파 색상 (연한 파랑)
+const SHOCKWAVE_LINE_WIDTH = 10;     // 충격파 선 두께
+
 // 무한 맵 관련 상수
 const WORLD_BOUNDS_SIZE = 100000; // 물리 세계의 매우 큰 경계
 const TILE_SIZE = 32; // 개별 배경 타일의 크기
@@ -160,6 +169,20 @@ function create(this: Phaser.Scene) {
     });
     playerLevelText.setOrigin(0.5);
     playerLevelText.setDepth(2); // UI는 가장 위에 표시
+
+    // 충격파 쿨타임 텍스트 생성
+    const shockwaveCooldownText = this.add.text(player.x, player.y, '', {
+        fontSize: '18px', // 폰트 크기 조정
+        color: '#FFFF00', // 노란색으로 눈에 띄게
+        stroke: '#000000',
+        strokeThickness: 4,
+        align: 'center',
+        fontStyle: 'bold'
+    });
+    shockwaveCooldownText.setOrigin(0.5, 1.5); // 텍스트의 중앙 하단을 기준으로 플레이어 머리 위쪽에 위치하도록 조정
+    shockwaveCooldownText.setDepth(player.depth + 1); // 항상 플레이어 위에 보이도록 depth 설정
+    shockwaveCooldownText.setVisible(false); // 초기에는 숨김
+    this.data.set('shockwaveCooldownText', shockwaveCooldownText);
 
     // 경험치 바 관련 요소 생성
     const expBarWidth = ENERGY_BAR_WIDTH; // 에너지 바 너비와 동일하게 변경
@@ -896,6 +919,77 @@ function hitDog(
     }
 }
 
+//충격파(하악질) 스킬
+function triggerShockwave(this: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
+    if (!player || !player.active) return;
+
+    console.log('Shockwave triggered!');
+
+    // 1. 시각 효과 (확장하는 원)
+    const shockwaveCircle = this.add.circle(player.x, player.y, SHOCKWAVE_RADIUS_START, SHOCKWAVE_COLOR, 0.7);
+    shockwaveCircle.setStrokeStyle(SHOCKWAVE_LINE_WIDTH, SHOCKWAVE_COLOR, 0.9);
+    shockwaveCircle.setDepth(player.depth - 1); // 플레이어보다 한 칸 아래에 보이도록 (또는 취향에 맞게 조절)
+
+    this.tweens.add({
+        targets: shockwaveCircle,
+        radius: SHOCKWAVE_RADIUS_END,
+        alpha: { from: 0.7, to: 0 },
+        lineWidth: { from: SHOCKWAVE_LINE_WIDTH, to: 0 }, // 선 두께도 줄어들도록
+        duration: SHOCKWAVE_DURATION_MS,
+        ease: 'Quad.easeOut',
+        onUpdate: (tween, target) => {
+            // tween의 progress에 따라 lineWidth를 직접 업데이트해야 할 수 있음 (Graphics는 lineWidth 직접 tween 안됨)
+            // 여기서는 strokeStyle을 다시 호출하여 lineWidth를 변경하는 방식을 사용하지 않음.
+            // 대신, alpha 값 변경으로 사라지는 효과에 집중.
+            // 원한다면, Graphics 객체를 사용하여 매 프레임 다시 그리는 방식으로 lineWidth 애니메이션 가능.
+        },
+        onComplete: () => {
+            shockwaveCircle.destroy();
+        }
+    });
+
+    // 2. 물리 효과 (주변 적 밀어내기)
+    const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
+    const dogs = this.data.get('dogs') as Phaser.Physics.Arcade.Group;
+    
+    const enemiesToCheck: Phaser.Physics.Arcade.Sprite[] = [];
+    if (mice) enemiesToCheck.push(...mice.getChildren() as Phaser.Physics.Arcade.Sprite[]);
+    if (dogs) enemiesToCheck.push(...dogs.getChildren() as Phaser.Physics.Arcade.Sprite[]);
+
+    enemiesToCheck.forEach((enemySprite) => {
+        if (enemySprite.active && enemySprite.body) {
+            // angle과 velocityFromAngle 사용 대신 방향 벡터 직접 계산
+            const dx = enemySprite.x - player.x;
+            const dy = enemySprite.y - player.y;
+
+            // 거리가 0인 경우 (플레이어와 적이 같은 위치) normalize()가 NaN을 반환할 수 있으므로 처리
+            if (dx === 0 && dy === 0) {
+                // 방향을 특정할 수 없으므로 임의의 방향으로 살짝 밀거나, 아무것도 안 함
+                // 예: 위로 밀기
+                enemySprite.body.velocity.setTo(0, -SHOCKWAVE_PUSH_FORCE);
+            } else {
+                const directionVector = new Phaser.Math.Vector2(dx, dy).normalize();
+    
+                enemySprite.body.velocity.setTo(0, 0); // 기존 속도 초기화
+                enemySprite.body.velocity.x = directionVector.x * SHOCKWAVE_PUSH_FORCE;
+                enemySprite.body.velocity.y = directionVector.y * SHOCKWAVE_PUSH_FORCE;
+            }
+
+            // CustomDogSprite 또는 일반 Sprite에 대한 타입 가드 (이 부분은 기존 로직 유지)
+            const enemyCustom = enemySprite as CustomDogSprite;
+            if (typeof enemyCustom.isKnockedBack !== 'undefined') {
+                enemyCustom.isKnockedBack = true;
+                this.time.delayedCall(KNOCKBACK_DURATION_MS, () => {
+                    if (enemyCustom.active) {
+                        enemyCustom.isKnockedBack = false;
+                        // if (enemyCustom.body) enemyCustom.body.velocity.setTo(0, 0); // 필요시 넉백 후 속도 초기화
+                    }
+                });
+            }
+        }
+    });
+}
+
 //물고기 아이템 획득 함수
 function collectFish(
     this: Phaser.Scene,
@@ -1058,6 +1152,8 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     const levelThresholds: { [key: string]: number } = levelExperience.levelExperience; // 명시적인 타입 정의
     const experienceNeededForNextLevel = levelThresholds[String(playerLevel+1)] || Infinity;
     const nextLevelThreshold = levelThresholds[String(playerLevel + 1)] || Infinity;
+    const shockwaveCooldownText = this.data.get('shockwaveCooldownText') as Phaser.GameObjects.Text;
+    const shockwavePhaserEvent = this.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
 
     if (!player || !cursors) {
         return;
@@ -1242,6 +1338,30 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     expBarFill.clear();
     expBarFill.fillStyle(0xffd700, 1);
     expBarFill.fillRect(0, 0, fillWidth, expBarHeight);
+
+    // 충격파 쿨타임 텍스트 업데이트
+    if (player && shockwaveCooldownText) { // 플레이어와 텍스트 객체가 모두 유효한지 확인
+        const hasShockwaveSkill = skills.includes(SHOCKWAVE_SKILL_ID);
+
+        if (hasShockwaveSkill && shockwavePhaserEvent) {
+            const remainingCooldownMs = shockwavePhaserEvent.getRemaining();
+            
+            if (remainingCooldownMs > 0) {
+                const remainingSeconds = Math.ceil(remainingCooldownMs / 1000);
+                shockwaveCooldownText.setText(`⚡ ${remainingSeconds}`); // 번개 이모티콘과 함께 초 단위 표시
+                shockwaveCooldownText.setVisible(true);
+            } else {
+                // 쿨타임이 거의 다 되었거나 (0ms), 방금 발동되어 다음 루프를 기다릴 때
+                shockwaveCooldownText.setText('⚡ ready!'); 
+                shockwaveCooldownText.setVisible(true);
+            }
+            // 플레이어 머리 위로 위치 업데이트 (플레이어 크기를 고려하여 y 오프셋 조정)
+            shockwaveCooldownText.setPosition(player.x, player.y - (player.displayHeight / 2) * player.scaleY - 10);
+        
+        } else if (shockwaveCooldownText.visible) { // 스킬이 없거나 이벤트가 없는데 보이고 있다면 숨김
+            shockwaveCooldownText.setVisible(false);
+        }
+    }
 
     //쥐의 움직임 처리
     mice.getChildren().forEach((mouseObject) => {
@@ -1493,16 +1613,17 @@ const GameCanvas: React.FC = () => {
 
     useEffect(() => {
         if (gameSceneRef.current) {
-            gameSceneRef.current.data.set('skills', skills);
-            gameSceneRef.current.data.set('playerLevel', currentLevel); // 현재 레벨 업데이트
-            gameSceneRef.current.data.set('shopOpened', false); // 스킬 업데이트 후 상점 오픈 상태 초기화
+            const scene = gameSceneRef.current;
+            scene.data.set('skills', skills);
+            scene.data.set('playerLevel', currentLevel); 
+            scene.data.set('shopOpened', false); 
 
             // 스킬 3이 포함되었을 경우 에너지 최대치를 4로 변경하고 현재 에너지도 4로 설정
             if (skills.some(skill => skill >= 31 && skill <= 39)) {
                 let skillLevel = skills.filter(skill => skill >= 31 && skill <= 39).sort((a, b) => b - a)[0];
                 skillLevel = skillLevel - 30; // 31~39 범위의 스킬 레벨을 1~9로 변환
                 const newMaxEnergy = 3 + skillLevel;
-                gameSceneRef.current.data.set('energy', newMaxEnergy);
+                scene.data.set('energy', newMaxEnergy);
                 // INITIAL_PLAYER_ENERGY 상수도 업데이트 (선택 사항, 이후 에너지 관련 로직에서 사용될 수 있음)
                 INITIAL_PLAYER_ENERGY = newMaxEnergy;
                 console.log('근성장 스킬 획득! 최대 에너지 변경.');
@@ -1510,6 +1631,31 @@ const GameCanvas: React.FC = () => {
                 // 스킬 3이 없는 경우 최대 에너지를 3으로 유지 (혹시 모를 상황 대비)
                 INITIAL_PLAYER_ENERGY = 3;
             }
+
+            // --- 충격파 스킬 타이머 관리 ---
+            const hasShockwaveSkill = skills.includes(SHOCKWAVE_SKILL_ID);
+            let shockwavePhaserEvent = scene.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
+
+            if (hasShockwaveSkill && !shockwavePhaserEvent) {
+                shockwavePhaserEvent = scene.time.addEvent({
+                    delay: SHOCKWAVE_INTERVAL_MS,
+                    callback: () => {
+                        const player = scene.data.get('player') as Phaser.Physics.Arcade.Sprite;
+                        const isGameOver = scene.data.get('gameOver') as boolean; // gameOver 상태 확인
+                        if (player && player.active && !isGameOver) { // 플레이어가 활성 상태이고 게임오버가 아닐 때만
+                            triggerShockwave.call(scene, player);
+                        }
+                    },
+                    loop: true
+                });
+                scene.data.set('shockwavePhaserEvent', shockwavePhaserEvent);
+                console.log(`Shockwave skill [${SHOCKWAVE_SKILL_ID}] activated, timer started.`);
+            } else if (!hasShockwaveSkill && shockwavePhaserEvent) {
+                shockwavePhaserEvent.remove(); // 타이머 이벤트 제거
+                scene.data.remove('shockwavePhaserEvent'); // 씬 데이터에서도 제거
+                console.log(`Shockwave skill [${SHOCKWAVE_SKILL_ID}] deactivated, timer stopped.`);
+            }
+            // --- 충격파 스킬 타이머 관리 끝 ---
 
             console.log('Phaser scene skills updated:', skills);
         }
