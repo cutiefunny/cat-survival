@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState } from 'react';
 interface SkillsContextType {
   skills: number[];
   addSkill: (skill: number) => void;
+  clearSkills: () => void;
 }
 
 const SkillsContext = createContext<SkillsContextType | undefined>(undefined);
@@ -15,15 +16,17 @@ export const SkillsProvider: React.FC<SkillsProviderProps> = ({ children }) => {
   const [skills, setSkills] = useState<number[]>([]);
 
   const addSkill = (skill: number) => {
-    console.log('addSkill called with skill:', skill);
-    setSkills(prevSkills => {
-        const updatedSkills = [...prevSkills, skill];
-        console.log('Skills updated:', updatedSkills);
-        return updatedSkills;
-    });
-};
+        console.log('addSkill called with skill:', skill);
+        setSkills(prevSkills => {
+            const updatedSkills = [...prevSkills, skill];
+            console.log('Skills updated:', updatedSkills);
+            return updatedSkills;
+        });
+    };
 
-  const value: SkillsContextType = { skills, addSkill };
+    const clearSkills = () => setSkills([]);;
+
+  const value: SkillsContextType = { skills, addSkill, clearSkills };
 
   return (
     <SkillsContext.Provider value={value}>

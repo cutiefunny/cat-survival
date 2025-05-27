@@ -432,6 +432,7 @@ function create(this: Phaser.Scene) {
     this.data.set('gameOverText', gameOverText);
     this.data.set('restartButton', restartButton); // 재시작 버튼 씬 데이터에 저장
 
+    this.data.set('skills', []); // React에서 초기 스킬을 받기 전까지 빈 배열로 설정
     this.data.set('isKnockedBack', false);
     this.data.set('energy', INITIAL_PLAYER_ENERGY);
     this.data.set('energyBarBg', energyBarBg);
@@ -1110,6 +1111,8 @@ function restartGame(this: Phaser.Scene) {
     this.data.set('shopOpened', false);
     this.data.set('skills', []); // 스킬도 초기화
     this.data.get('generatedChunks').clear(); // 생성된 청크 목록 초기화
+    this.data.set('shockwaveArmed', false); // 충격파 준비 상태 초기화
+    this.data.set('shockwaveCooldown', false); // 충격파 쿨타임 상태 초기화
 
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
     if (player) {
@@ -1594,7 +1597,7 @@ const GameCanvas: React.FC = () => {
     const gameRef = useRef<Phaser.Game | null>(null);
     const [showShopModal, setShowShopModal] = useState(false);
     const [currentScore, setCurrentScore] = useState(0);
-    const { skills } = useSkills(); // skills 배열을 React Context에서 가져옴
+    const { skills, clearSkills } = useSkills(); // skills 배열을 React Context에서 가져옴
     const [currentLevel, setCurrentLevel] = useState(1); // 현재 레벨 상태 추가
     const [showGameOverModal, setShowGameOverModal] = useState(false); // 게임 오버 모달 상태
     const [finalScore, setFinalScore] = useState(0); // 게임 오버 시 점수 저장
@@ -1753,9 +1756,36 @@ const GameCanvas: React.FC = () => {
 
     // Phaser 씬에서 재시작 버튼 클릭 시 호출될 함수 (props로 전달)
     const handleRestartGame = () => {
+
+        // 1. React Context의 skills 상태 초기화 (가장 먼저 또는 중요하게)
+        if (clearSkills) { // clearSkills 함수가 SkillsContext에서 제공되는지 확인
+            clearSkills(); // SkillsContext의 스킬 목록을 비웁니다.
+            console.log('React: SkillsContext skills cleared.');
+        } else {
+            // 만약 setSkills를 직접 사용한다면:
+            // const { skills, setSkills } = useSkills();
+            // setSkills([]); // 이런 식으로 호출
+            console.warn('React: clearSkills function not found in SkillsContext. Skills may not reset correctly in context.');
+        }
+
         if (gameSceneRef.current && gameSceneRef.current.scene) { // gameSceneRef.current와 gameSceneRef.current.scene이 유효한지 확인
             console.log('Attempting to restart Phaser scene...');
-            gameSceneRef.current.scene.restart(); // Phaser 씬의 ScenePlugin을 통해 restart 호출
+            const scene = gameSceneRef.current; // 편의상 scene 변수 사용
+
+            // 1. Phaser 씬 내 충격파 관련 데이터 및 타이머 명시적 초기화
+            const shockwavePhaserEvent = scene.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
+            if (shockwavePhaserEvent) {
+                shockwavePhaserEvent.remove(); // 타이머 이벤트 중지 및 제거
+                scene.data.remove('shockwavePhaserEvent'); // 씬 데이터에서 타이머 참조 제거
+                console.log('React: Shockwave timer event removed.');
+            }
+            scene.data.set('shockwaveArmed', false); // 충격파 준비 상태 해제
+            const shockwaveCooldownText = scene.data.get('shockwaveCooldownText') as Phaser.GameObjects.Text | undefined;
+            if (shockwaveCooldownText) {
+                shockwaveCooldownText.setVisible(false); // 쿨타임 텍스트 숨김
+            }
+            // 모바일 2점 터치 감지용 플래그도 초기화 (필요하다면)
+            scene.data.set('wasTwoFingerDown', false);
             
             // React Context의 skills 상태 초기화
             // 참고: 현재 skills를 초기화하는 로직이 비어있거나 불완전해 보입니다.
@@ -1773,9 +1803,12 @@ const GameCanvas: React.FC = () => {
                  if (generatedChunks && typeof generatedChunks.clear === 'function') {
                     generatedChunks.clear();
                  }
+                 gameOver = false; // 전역 gameOver 플래그
+                 elapsedTime = 0;  // 전역 elapsedTime 플래그
             }
 
             setShowGameOverModal(false); // 게임 오버 모달 닫기
+            gameSceneRef.current.scene.restart(); // Phaser 씬의 ScenePlugin을 통해 restart 호출
 
             // 씬이 실제로 재시작되고 준비된 후 resume을 호출하는 것이 더 안정적일 수 있지만,
             // Phaser의 restart는 내부적으로 기존 씬을 종료하고 새로 시작하므로,
