@@ -1475,7 +1475,7 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     //개의 움직임 처리
     dogs.getChildren().forEach((dogObject) => {
 
-        let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.10) * (1 + Math.floor(elapsedTime / 30) * 0.5);
+        let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.10); // * (1 + Math.floor(elapsedTime / 30) * 0.5); 난이도 조절을 위해 시간당 속도 증가 제외
         const wanderSpeed = dogChaseSpeed * 1.3; // 흩어지는 속도
 
         const dog = dogObject as CustomDogSprite;
