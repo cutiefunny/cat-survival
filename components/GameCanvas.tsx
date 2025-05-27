@@ -96,6 +96,7 @@ const SHOCKWAVE_DURATION_MS = 500;   // 충격파 시각 효과 지속 시간
 const SHOCKWAVE_PUSH_FORCE = 500;   // 적을 밀어내는 힘
 const SHOCKWAVE_COLOR = 0xADD8E6;   // 충격파 색상 (연한 파랑)
 const SHOCKWAVE_LINE_WIDTH = 10;     // 충격파 선 두께
+const SHOCKWAVE_TRIGGER_DISTANCE = 50; // 충격파 발동을 위한 적 감지 거리
 
 // 무한 맵 관련 상수
 const WORLD_BOUNDS_SIZE = 100000; // 물리 세계의 매우 큰 경계
@@ -126,6 +127,7 @@ function preload(this: Phaser.Scene) {
     // 나비 아이템 스프라이트 로드 (사용자 수정 반영: frameHeight를 83으로 수정)
     this.load.spritesheet('butterfly_sprite_3frame', '/images/butterfly_sprite_3frame.png', { frameWidth: 100, frameHeight: 83 });
     this.load.image('cat_cry', '/images/cat_cry.png'); // cat_cry 이미지 로드
+    this.load.image('cat_haak', '/images/cat_haak.png'); // cat_haak 이미지 로드
 }
 
 //게임의 각 요소를 생성하는 함수
@@ -143,6 +145,7 @@ function create(this: Phaser.Scene) {
 
 
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
+    this.data.set('isMobile', isMobile); // 모바일 여부 저장
     const minWidthApplied = this.data.get('minWidthApplied') as boolean || false;
 
     const player = this.physics.add.sprite(this.game.config.width as number / 2, this.game.config.height as number / 2, 'player_sprite');
@@ -287,6 +290,8 @@ function create(this: Phaser.Scene) {
     });
 
     const cursors = this.input.keyboard?.createCursorKeys();
+    this.data.set('spaceKey', this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE));
+    this.input.mouse?.disableContextMenu(); // 마우스 우클릭 시 컨텍스트 메뉴 비활성화
     this.input.addPointer(1);
     this.input.addPointer(2);
 
@@ -436,6 +441,10 @@ function create(this: Phaser.Scene) {
     this.data.set('shopOpened', false); // 상점 팝업 플래그 초기화
     this.data.set('skills', []); // skills 배열을 씬 데이터에 저장
     this.data.set('isInvincible', false); // 무적 상태 플래그 초기화
+    this.data.set('shockwaveArmed', false); // 충격파 준비 상태 초기화
+    this.data.set('wasTwoFingerDown', false); // 2점 터치 이전 상태 저장을 위해 추가
+    this.data.set('isHaak', false); // 하크 상태 플래그 초기화
+    this.data.set('shockwaveCooldown', false); // 충격파 쿨타임 상태 초기화
 
     // generatedChunks Set을 먼저 초기화합니다.
     this.data.set('generatedChunks', new Set<string>());
@@ -925,6 +934,15 @@ function triggerShockwave(this: Phaser.Scene, player: Phaser.Physics.Arcade.Spri
 
     console.log('Shockwave triggered!');
 
+    // 0. 캐릭터를 cat_haak 스프라이트로 변경
+    player.setTexture('cat_haak'); // cat_haak 이미지 로드되어 있어야 함
+    this.data.set('isHaak', true); // 하크 상태 플래그 설정
+    this.time.delayedCall(500, () => {
+        this.data.set('isHaak', false); // 하크 상태 플래그 해제
+        player.setTexture('player_sprite'); // 원래 스프라이트 시트로 복귀
+        player.play('cat_walk', true); // 원래 애니메이션 재생
+    }, [], this);
+
     // 1. 시각 효과 (확장하는 원)
     const shockwaveCircle = this.add.circle(player.x, player.y, SHOCKWAVE_RADIUS_START, SHOCKWAVE_COLOR, 0.7);
     shockwaveCircle.setStrokeStyle(SHOCKWAVE_LINE_WIDTH, SHOCKWAVE_COLOR, 0.9);
@@ -1154,6 +1172,7 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     const nextLevelThreshold = levelThresholds[String(playerLevel + 1)] || Infinity;
     const shockwaveCooldownText = this.data.get('shockwaveCooldownText') as Phaser.GameObjects.Text;
     const shockwavePhaserEvent = this.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
+    let isShockwaveArmed = this.data.get('shockwaveArmed') as boolean; // Phaser 씬 데이터에서 읽어옴
 
     if (!player || !cursors) {
         return;
@@ -1264,9 +1283,14 @@ function update(this: Phaser.Scene, time: number, delta: number) {
         }
     }
 
-    // 플레이어 스프라이트 변경 (무적 시간 동안만)
+    // 플레이어 스프라이트 변경 (무적 시간)
     if (isInvincible) {
         player.setTexture('cat_hit'); // cat_hit 이미지 로드되어 있어야 함
+    }
+
+    // 플레이어 스프라이트 변경 (하악질)
+    if (this.data.get('isHaak')) {
+        player.setTexture('cat_haak'); // cat_haak 이미지 로드되어 있어야 함
     }
 
     // 애니메이션 처리
@@ -1339,27 +1363,81 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     expBarFill.fillStyle(0xffd700, 1);
     expBarFill.fillRect(0, 0, fillWidth, expBarHeight);
 
-    // 충격파 쿨타임 텍스트 업데이트
-    if (player && shockwaveCooldownText) { // 플레이어와 텍스트 객체가 모두 유효한지 확인
+    if (player && shockwaveCooldownText) {
         const hasShockwaveSkill = skills.includes(SHOCKWAVE_SKILL_ID);
 
-        if (hasShockwaveSkill && shockwavePhaserEvent) {
-            const remainingCooldownMs = shockwavePhaserEvent.getRemaining();
-            
-            if (remainingCooldownMs > 0) {
-                const remainingSeconds = Math.ceil(remainingCooldownMs / 1000);
-                shockwaveCooldownText.setText(`⚡ ${remainingSeconds}`); // 번개 이모티콘과 함께 초 단위 표시
-                shockwaveCooldownText.setVisible(true);
-            } else {
-                // 쿨타임이 거의 다 되었거나 (0ms), 방금 발동되어 다음 루프를 기다릴 때
-                shockwaveCooldownText.setText('⚡ ready!'); 
-                shockwaveCooldownText.setVisible(true);
-            }
-            // 플레이어 머리 위로 위치 업데이트 (플레이어 크기를 고려하여 y 오프셋 조정)
+        if (hasShockwaveSkill) {
             shockwaveCooldownText.setPosition(player.x, player.y - (player.displayHeight / 2) * player.scaleY - 10);
-        
-        } else if (shockwaveCooldownText.visible) { // 스킬이 없거나 이벤트가 없는데 보이고 있다면 숨김
-            shockwaveCooldownText.setVisible(false);
+            
+            if (isShockwaveArmed) {
+                shockwaveCooldownText.setText('⚡');
+                shockwaveCooldownText.setVisible(true);
+
+                // 사용자 입력 감지 로직으로 변경
+                let triggerInputDetected = false;
+                const isMobileDevice = this.data.get('isMobile') as boolean;
+                const spaceKey = this.data.get('spaceKey') as Phaser.Input.Keyboard.Key;
+
+                if (isMobileDevice) {
+                    const pointer1Down = this.input.pointer1.isDown;
+                    const pointer2Down = this.input.pointer2.isDown; // 두 번째 터치 포인트 확인
+                    const isTwoFingerCurrentlyDown = pointer1Down && pointer2Down;
+                    const wasTwoFingerDown = this.data.get('wasTwoFingerDown') as boolean;
+
+                    if (isTwoFingerCurrentlyDown && !wasTwoFingerDown) {
+                        // 두 손가락 터치가 "방금" 시작되었을 때
+                        triggerInputDetected = true;
+                    }
+                    this.data.set('wasTwoFingerDown', isTwoFingerCurrentlyDown); // 현재 두 손가락 터치 상태 업데이트
+                
+                } else { // 데스크톱 환경
+                    if (Phaser.Input.Keyboard.JustDown(spaceKey)) {
+                        triggerInputDetected = true;
+                    }
+                    // 마우스 우클릭 감지 (activePointer 사용)
+                    if (this.input.activePointer.rightButtonDown()) { 
+                        // rightButtonDown은 누르고 있는 동안 계속 true이므로, 
+                        // shockwaveArmed가 false로 바뀐 후 다음 프레임에서 재발동하지 않도록 armed 상태가 즉시 해제되어야 함.
+                        triggerInputDetected = true;
+                    }
+                }
+
+                if (triggerInputDetected) {
+                    triggerShockwave.call(this, player); 
+                    this.data.set('shockwaveArmed', false); 
+                    isShockwaveArmed = false; // 현재 프레임 로직 반영
+                    console.log('Armed shockwave triggered by user input.');
+                    
+                    // --- 쿨타임 리셋 로직 추가 ---
+                    const shockwavePhaserEvent = this.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
+                    if (shockwavePhaserEvent) {
+                        shockwavePhaserEvent.elapsed = 0; // 타이머의 경과 시간을 0으로 설정하여 쿨타임을 즉시 재시작
+                    }
+                    // --- 쿨타임 리셋 로직 끝 ---
+
+                    // 2점 터치 상태 초기화 (연속 발동 방지)
+                    if (isMobileDevice) {
+                        this.data.set('wasTwoFingerDown', false); // 발동 후에는 이전 상태를 false로 설정하여 다음 터치 대기
+                    }
+                }
+            } else if (shockwavePhaserEvent) { // 준비되지 않았고, 타이머가 존재하면 쿨타임 표시
+                const remainingCooldownMs = shockwavePhaserEvent.getRemaining();
+                if (remainingCooldownMs > 0) {
+                    const remainingSeconds = Math.ceil(remainingCooldownMs / 1000);
+                    shockwaveCooldownText.setText(`${remainingSeconds}`);
+                    shockwaveCooldownText.setVisible(true);
+                } else {
+                    shockwaveCooldownText.setText('⚡ 준비 중...');
+                    shockwaveCooldownText.setVisible(true); 
+                }
+            } else { 
+                shockwaveCooldownText.setVisible(false);
+            }
+        } else { 
+            if (shockwaveCooldownText.visible) shockwaveCooldownText.setVisible(false);
+            if (isShockwaveArmed) { 
+                this.data.set('shockwaveArmed', false);
+            }
         }
     }
 
@@ -1637,22 +1715,26 @@ const GameCanvas: React.FC = () => {
             let shockwavePhaserEvent = scene.data.get('shockwavePhaserEvent') as Phaser.Time.TimerEvent | undefined;
 
             if (hasShockwaveSkill && !shockwavePhaserEvent) {
+                scene.data.set('shockwaveArmed', false); // 스킬 활성화 시 준비 상태 초기화
                 shockwavePhaserEvent = scene.time.addEvent({
                     delay: SHOCKWAVE_INTERVAL_MS,
                     callback: () => {
                         const player = scene.data.get('player') as Phaser.Physics.Arcade.Sprite;
-                        const isGameOver = scene.data.get('gameOver') as boolean; // gameOver 상태 확인
-                        if (player && player.active && !isGameOver) { // 플레이어가 활성 상태이고 게임오버가 아닐 때만
-                            triggerShockwave.call(scene, player);
+                        const isGameOver = scene.data.get('gameOver') as boolean;
+                        // 스킬이 여전히 활성화 상태인지, 게임오버가 아닌지, 플레이어가 유효한지 확인
+                        if (player && player.active && !isGameOver && (scene.data.get('skills') as number[]).includes(SHOCKWAVE_SKILL_ID)) {
+                            scene.data.set('shockwaveArmed', true); // 직접 발동 대신 준비 상태로 변경
+                            console.log('Shockwave is ARMED!');
                         }
                     },
                     loop: true
                 });
                 scene.data.set('shockwavePhaserEvent', shockwavePhaserEvent);
-                console.log(`Shockwave skill [${SHOCKWAVE_SKILL_ID}] activated, timer started.`);
+                console.log(`Shockwave skill [${SHOCKWAVE_SKILL_ID}] cooldown timer started.`);
             } else if (!hasShockwaveSkill && shockwavePhaserEvent) {
-                shockwavePhaserEvent.remove(); // 타이머 이벤트 제거
-                scene.data.remove('shockwavePhaserEvent'); // 씬 데이터에서도 제거
+                shockwavePhaserEvent.remove();
+                scene.data.remove('shockwavePhaserEvent');
+                scene.data.set('shockwaveArmed', false); // 스킬 비활성화 시 준비 상태 해제
                 console.log(`Shockwave skill [${SHOCKWAVE_SKILL_ID}] deactivated, timer stopped.`);
             }
             // --- 충격파 스킬 타이머 관리 끝 ---

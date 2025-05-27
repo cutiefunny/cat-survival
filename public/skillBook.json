@@ -2,7 +2,7 @@
     {
         "id": 11,
         "name": "냥냥펀치1",
-        "description": "냥냥펀치로 상대를 밀어낸다!",
+        "description": "정면의 상대를 밀어낸다!",
         "level": 2,
         "imageUrl": "/images/skill-punch.png"
     },
@@ -23,7 +23,7 @@
     {
         "id": 12,
         "name": "냥냥펀치2",
-        "description": "밀어낸 상대가 1초간 기절한다!",
+        "description": "밀어낸 상대가 1초간 기절!",
         "level": 3,
         "imageUrl": "/images/skill-punch.png"
     },
@@ -44,7 +44,7 @@
     {
         "id": 13,
         "name": "냥냥펀치3",
-        "description": "밀어낸 상대가 2초간 기절한다!",
+        "description": "밀어낸 상대가 2초간 기절!",
         "level": 4,
         "imageUrl": "/images/skill-punch.png"
     },
@@ -65,7 +65,7 @@
     {
         "id": 51,
         "name": "하악질",
-        "description": "10초마다 주변의 적을 밀쳐낸다!",
+        "description": "주변의 적을 밀쳐낸다(쿨타임 10초)",
         "level": 3,
         "imageUrl": "/images/skill-haak.png"
     }
