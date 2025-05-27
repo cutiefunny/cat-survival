@@ -519,7 +519,7 @@ function spawnMouseVillain(this: Phaser.Scene) {
     if (gameOver) return;
 
     let playerLevel = this.data.get('playerLevel') as number; // 플레이어 레벨 가져오기
-    const maxActiveMice = MAX_ACTIVE_MICE + playerLevel - 1; // 레벨에 따라 최대 쥐 개수 증가
+    const maxActiveMice = MAX_ACTIVE_MICE + (playerLevel * 2); // 레벨에 따라 최대 쥐 개수 증가
 
     const mice = this.data.get('mice') as Phaser.Physics.Arcade.Group;
     const player = this.data.get('player') as Phaser.Physics.Arcade.Sprite;
@@ -1246,20 +1246,37 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     //쥐의 움직임 처리
     mice.getChildren().forEach((mouseObject) => {
         const mouse = mouseObject as Phaser.Physics.Arcade.Sprite;
-        if (mouse.body instanceof Phaser.Physics.Arcade.Body) {
+        if (mouse.active && mouse.body) {
+            // 쥐가 플레이어 주변으로 모이도록 유도
+            const distanceToPlayer = Phaser.Math.Distance.Between(player.x, player.y, mouse.x, mouse.y);
+            const fleeRadius = 200; // 200 픽셀 반경
+            const gatheringRadius = 700; // 700 픽셀 반경 내에 있는 쥐만 모이도록 설정
+            const gatheringSpeed = 70; // Gathering speed 조정
+
+            if (distanceToPlayer < fleeRadius) {
+            // 플레이어 위치로부터 반대 방향으로 도망
+            const fleeX = mouse.x - (player.x - mouse.x);
+            const fleeY = mouse.y - (player.y - mouse.y);
+            this.physics.moveToObject(mouse, { x: fleeX, y: fleeY }, gatheringSpeed);
+            }else if (distanceToPlayer > gatheringRadius) {
+            // gatheringRadius 밖에 있는 쥐는 기존처럼 플레이어를 향해 이동
+                this.physics.moveToObject(mouse, player, gatheringSpeed);
+            }
+
             if (mouse.body.velocity.x < 0) {
-                mouse.setFlipX(false);
+            mouse.setFlipX(false);
             } else if (mouse.body.velocity.x > 0) {
-                mouse.setFlipX(true);
+            mouse.setFlipX(true);
             }
         }
     });
 
-    let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.10) * (1 + Math.floor(elapsedTime / 60) * 0.1);
-    const wanderSpeed = dogChaseSpeed * 1.3; // 흩어지는 속도
-
     //개의 움직임 처리
     dogs.getChildren().forEach((dogObject) => {
+
+        let dogChaseSpeed = DOG_CHASE_SPEED * (1 + (playerLevel - 1) * 0.10) * (1 + Math.floor(elapsedTime / 30) * 0.1);
+        const wanderSpeed = dogChaseSpeed * 1.3; // 흩어지는 속도
+
         const dog = dogObject as CustomDogSprite;
         if (dog.active && dog.body && !dog.isKnockedBack && !dog.isStunned) {
             let aiState = dog.getData('aiState') || 0; // 기본 상태는 0 (일반 추격)
