@@ -1,5 +1,6 @@
 // GameOverModal.tsx
 import React, { useState, useEffect } from 'react';
+import styles from './GameOverModal.module.css'; // CSS Module 임포트
 
 interface RankEntry {
     name: string;
@@ -23,22 +24,16 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
     const [isLoadingRanks, setIsLoadingRanks] = useState(false);
     const [rankError, setRankError] = useState<string | null>(null);
 
-    // isVisible prop이 변경될 때 상태를 초기화하는 useEffect 추가
     useEffect(() => {
         if (isVisible) {
-            // 모달이 표시될 때 상태들을 초기값으로 리셋합니다.
-            setPlayerName(''); // 기존 플레이어 이름 입력 지우기
-            setShowRanks(false); // 이름 입력창을 먼저 보여주도록 설정
-            setRanks([]); // 이전 랭킹 정보 지우기
-            setRankError(null); // 이전 오류 메시지 지우기
-            setIsLoadingRanks(false); // 로딩 상태 리셋
-            // deviceId는 localStorage에서 가져오므로 유지되거나, 
-            // 아래 deviceId 설정 useEffect에서 처리됩니다.
-            // playerName은 아래 getName 로직에 의해 서버 값으로 갱신될 수 있습니다.
+            setPlayerName('');
+            setShowRanks(false);
+            setRanks([]);
+            setRankError(null);
+            setIsLoadingRanks(false);
         }
-    }, [isVisible]); // isVisible이 변경될 때마다 이 effect 실행
+    }, [isVisible]);
 
-    // deviceId 설정 로직 (컴포넌트 마운트 시 한 번 실행)
     useEffect(() => {
         const deviceIdKey = "deviceId";
         let currentDeviceId = localStorage.getItem(deviceIdKey);
@@ -48,9 +43,8 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
             localStorage.setItem(deviceIdKey, currentDeviceId);
         }
         setDeviceId(currentDeviceId);
-    }, []); // 빈 의존성 배열
+    }, []);
 
-    // deviceId를 사용하여 이름 가져오기
     useEffect(() => {
         const getName = async () => {
             if (deviceId) { 
@@ -58,8 +52,6 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
                     const response = await fetch(`/api/getName?deviceId=${deviceId}`);
                     if (response.ok) {
                         const data = await response.json();
-                        // isVisible 조건 추가: 모달이 실제로 보여질 때만 playerName을 설정
-                        // (위의 isVisible effect에서 playerName이 ''로 초기화된 후 실행됨)
                         if (data.name && data.name !== '' && isVisible) {
                             setPlayerName(data.name);
                         }
@@ -72,10 +64,10 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
             }
         };
 
-        if (isVisible && deviceId) { // 모달이 보이고, deviceId도 설정되었을 때 이름 가져오기
+        if (isVisible && deviceId) {
             getName();
         }
-    }, [deviceId, isVisible]); // isVisible을 의존성에 추가
+    }, [deviceId, isVisible]);
 
     const handleSaveAndShowRanks = () => {
         onSave(playerName); 
@@ -88,8 +80,7 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
         if (deviceId) {
             setIsLoadingRanks(true);
             setRankError(null);
-            // setShowRanks(false); // 여기서 굳이 false로 할 필요는 없음. 성공 시 true가 됨.
-
+            
             fetch('/api/saveRank', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -130,57 +121,66 @@ const GameOverModal: React.FC<GameOverModalProps> = ({ isVisible, score, onClose
         return null;
     }
 
-    // JSX 렌더링 부분은 이전과 동일하게 유지
+    const getRankItemClassName = (index: number): string => {
+        const classNames = [styles.rankItem];
+        if (index === 0) classNames.push(styles.rankItemGold);
+        else if (index === 1) classNames.push(styles.rankItemSilver);
+        else if (index === 2) classNames.push(styles.rankItemBronze);
+        return classNames.join(' ');
+    };
+
     return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
-            <div style={{ backgroundColor: '#f0f0f0', padding: '20px', borderRadius: '8px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '300px' }}>
+        <div className={styles.modalOverlay}>
+            <div className={styles.modalContent}>
                 {!showRanks ? (
                     <>
-                        <img src="/images/cat_cry.png" alt="Game Over" style={{ width: '100px', height: '100px' }} />
-                        <h2>Game Over!</h2>
-                        <p>너의 점수는 <strong>{score}</strong>점</p>
-                        <div style={{ margin: '15px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                        <img src="/images/cat_cry.png" alt="Game Over" className={styles.gameOverImage} />
+                        <h2 className={styles.title}>Game Over!</h2>
+                        <p className={styles.scoreText}>너의 점수는 <strong>{score}</strong>점</p>
+                        <div className={styles.inputGroup}>
                             <input
                                 type="text"
                                 id="playerName"
                                 placeholder='이름을 남겨라!'
-                                value={playerName} // isVisible effect에서 ''로 초기화됨
+                                value={playerName}
                                 onChange={(e) => setPlayerName(e.target.value)}
-                                style={{ textAlign: 'center', border: '1px solid #ccc', borderRadius: '4px', padding: '8px 10px', flexGrow: 1 }}
+                                className={styles.playerNameInput}
                             />
-                            <button onClick={handleSaveAndShowRanks} style={{ padding: '9px 15px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            <button 
+                                onClick={handleSaveAndShowRanks} 
+                                className={`${styles.button} ${styles.saveButton}`}
+                            >
                                 저장
                             </button>
                         </div>
-                        <button onClick={onClose} style={{ marginTop: '10px', padding: '8px 15px', background: '#f44336', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                        <button 
+                            onClick={onClose} 
+                            className={`${styles.button} ${styles.restartButtonInitial}`}
+                        >
                             재시작
                         </button>
                     </>
                 ) : (
                     <>
-                        <h2 style={{ fontSize: '2em', fontWeight: 'bold', color: '#FFD700', textShadow: '2px 2px 4px #000000' }}>🏆 게임 랭킹 🏆</h2>
-                        {isLoadingRanks && <p>랭킹을 불러오는 중...</p>}
-                        {rankError && <p style={{ color: 'red', marginTop: '10px' }}>오류: {rankError}</p>}
+                        <h2 className={styles.rankingTitle}>🏆 게임 랭킹 🏆</h2>
+                        {isLoadingRanks && <p className={styles.loadingText}>랭킹을 불러오는 중...</p>}
+                        {rankError && <p className={styles.rankErrorText}>오류: {rankError}</p>}
                         {!isLoadingRanks && !rankError && ranks.length > 0 && (
-                            <ol style={{ listStyleType: 'decimal', paddingLeft: '20px', maxHeight: '200px', marginTop: '10px', overflowY: 'auto', textAlign: 'left', width: '100%' }}>
+                            <div className={styles.rankList}>
                                 {ranks.slice(0, 10).map((rank, index) => (
-                                    <li key={index} style={{
-                                        marginBottom: '5px',
-                                        padding: '3px',
-                                        borderBottom: '1px solid #ddd',
-                                        color: index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? '#CD7F32' : 'inherit',
-                                        fontWeight: index <= 2 ? 'bold' : 'normal',
-                                        textShadow: index <= 2 ? '-1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black, 1px 1px 0 black' : 'none'
-                                    }}>
+                                    <div key={index} className={getRankItemClassName(index)}>
                                         {rank.name} - {rank.score}점
-                                    </li>
+                                    </div>
                                 ))}
-                            </ol>
+                            </div>
                         )}
                         {!isLoadingRanks && !rankError && ranks.length === 0 && (
-                            <p>아직 랭킹이 없습니다.</p>
+                            <p className={styles.noRanksText}>아직 랭킹이 없습니다.</p>
                         )}
-                        <button onClick={onClose} style={{ marginTop: '20px', padding: '8px 15px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                        <button 
+                            onClick={onClose} 
+                            className={`${styles.button} ${styles.restartButtonRankView}`}
+                        >
                             재시작 / 닫기
                         </button>
                     </>

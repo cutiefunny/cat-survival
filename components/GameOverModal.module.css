@@ -1,0 +1,164 @@
+/* GameOverModal.module.css */
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modalContent {
+    background-color: #f0f0f0;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 300px;
+    max-width: 90%; /* 모바일 화면을 위한 최대 너비 */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); /* 약간의 그림자 효과 */
+}
+
+.gameOverImage {
+    width: 100px;
+    height: 100px;
+    margin-bottom: 10px; /* 이미지와 텍스트 간 간격 */
+}
+
+.title { /* "Game Over!" 및 "게임 랭킹" 공통 타이틀 스타일 */
+    margin-bottom: 10px;
+    color: #333; /* 기본 글자색 */
+}
+
+.modalContent.dark .title {
+    color: #eee; /* 다크 모드 글자색 */
+}
+
+.scoreText {
+    margin-bottom: 15px; /* 점수와 입력 필드 간 간격 */
+    color: #555; /* 기본 글자색 */
+}
+
+.modalContent.dark .scoreText {
+    color: #ddd; /* 다크 모드 글자색 */
+}
+
+.scoreText strong {
+    font-size: 1.2em;
+    color: #d32f2f; /* 점수 강조 색상 */
+}
+
+.inputGroup {
+    margin: 15px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.playerNameInput {
+    text-align: center;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 8px 10px;
+    flex-grow: 1;
+    /* marginRight: 10px; 제거됨 - 버튼과의 간격은 버튼 자체의 margin으로 처리 가능 */
+}
+
+.button { /* 공통 버튼 스타일 */
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 9px 15px;
+    color: white;
+    font-weight: 500; /* 폰트 두께 조정 */
+    white-space: nowrap;
+    transition: background-color 0.2s ease-in-out; /* 부드러운 색상 변경 효과 */
+}
+
+.button:hover {
+    opacity: 0.9; /* 호버 시 약간 투명하게 */
+}
+
+.saveButton {
+    background-color: #4CAF50; /* 초록색 */
+    margin-left: 10px; /* 입력창과의 간격 */
+}
+
+.restartButtonInitial {
+    margin-top: 10px;
+    background-color: #f44336; /* 빨간색 */
+}
+
+.rankingTitle {
+    font-size: 2em;
+    font-weight: bold;
+    color: #FFD700;
+    text-shadow: 2px 2px 4px #000000;
+    margin-bottom: 15px;
+}
+
+.loadingText,
+.noRanksText {
+    margin: 15px 0;
+    color: #555;
+}
+
+.rankErrorText {
+    color: red;
+    margin-top: 10px;
+    margin-bottom: 15px;
+    font-weight: bold;
+}
+
+.rankList {
+    list-style-type: decimal;
+    padding-left: 20px;
+    max-height: 100%;
+    margin-top: 10px;
+    overflow-y: auto;
+    text-align: center; /* 변경: 텍스트를 가운데 정렬 */
+    width: 100%;
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 15px; /* 리스트 내부 여백 증가 */
+}
+
+.rankItem {
+    margin-bottom: 8px;
+    padding-bottom: 8px; /* 패딩으로 변경하여 클릭 영역 확보 */
+    border-bottom: 1px solid #eee;
+    font-size: 1em; /* 기본 폰트 크기 */
+}
+
+.rankItem:last-child {
+    border-bottom: none;
+}
+
+.rankItemGold {
+    color: #D4AF37; /* 좀 더 부드러운 금색 */
+    font-weight: bold;
+    /* text-shadow 제거 또는 간소화 - 가독성 고려 */
+}
+
+.rankItemSilver {
+    color: #A8A8A8; /* 좀 더 부드러운 은색 */
+    font-weight: bold;
+}
+
+.rankItemBronze {
+    color: #B08D57; /* 좀 더 부드러운 동색 */
+    font-weight: bold;
+}
+
+.restartButtonRankView {
+    margin-top: 20px;
+    background-color: #007bff; /* 파란색 */
+}
