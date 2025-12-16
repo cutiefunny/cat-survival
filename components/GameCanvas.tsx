@@ -153,8 +153,7 @@ function create(this: Phaser.Scene) {
         x: 0, 
         y: 0, 
         width: CHUNK_SIZE_PX + 2, // [Seam Fix] 2px 더 크게 생성하여 오버랩 유도
-        height: CHUNK_SIZE_PX + 2,
-        add: false 
+        height: CHUNK_SIZE_PX + 2
     }, false);
 
     for (let v = 0; v < chunkVariations; v++) {
