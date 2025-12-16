@@ -12,7 +12,6 @@ const FLEE_RADIUS = 200;
 const FLEE_RADIUS_SQ = FLEE_RADIUS * FLEE_RADIUS;
 const GATHERING_RADIUS = 700;
 const GATHERING_RADIUS_SQ = GATHERING_RADIUS * GATHERING_RADIUS;
-const CHUNK_CLEANUP_THRESHOLD = 3; // 화면 밖 몇 개 청크부터 삭제할지
 
 function getGameDimensions() {
     if (typeof window !== 'undefined') {
@@ -31,7 +30,9 @@ function getGameDimensions() {
 
 const baseConfig: Omit<Phaser.Types.Core.GameConfig, 'width' | 'height'> = {
     type: Phaser.AUTO,
+    // [최적화] 픽셀 반올림 설정 (선명도 향상 및 틈새 방지)
     roundPixels: true,
+    pixelArt: true,
     physics: {
         default: 'arcade',
         arcade: {
@@ -105,9 +106,10 @@ const SHOCKWAVE_TRIGGER_DISTANCE = 50;
 const WORLD_BOUNDS_SIZE = 100000;
 const TILE_SIZE = 32;
 const CHUNK_DIMENSIONS = 20;
-const CHUNK_SIZE_PX = CHUNK_DIMENSIONS * TILE_SIZE;
+const CHUNK_SIZE_PX = CHUNK_DIMENSIONS * TILE_SIZE; // 640px
 const GENERATION_BUFFER_CHUNKS = 2;
 
+// 타일 색상 배열 생성
 const TILE_COLORS: number[] = [];
 for (let i = 0; i < 10; i++) {
     const hue = Phaser.Math.FloatBetween(0.25, 0.40);
@@ -135,8 +137,43 @@ function create(this: Phaser.Scene) {
     initialPinchDistance = 0;
     lastCameraZoom = 1;
 
-    this.cameras.main.setBackgroundColor('#ffffff');
+    // [최적화] 배경색을 타일 색상과 유사한 짙은 녹색으로 설정 (미세한 틈이 생겨도 티가 안 나게 함)
+    this.cameras.main.setBackgroundColor('#2d4c1e');
+    this.cameras.main.setRoundPixels(true); // 카메라 렌더링 시 반올림
+
     this.physics.world.setBounds(0, 0, WORLD_BOUNDS_SIZE, WORLD_BOUNDS_SIZE);
+
+    // --------------------------------------------------------------------------------
+    // [핵심 최적화: 텍스처 미리 생성 (Texture Caching)]
+    // 게임 시작 시 4가지 패턴의 배경 청크 텍스처를 미리 메모리에 그려둡니다.
+    // 플레이 중에는 drawRect 연산 없이 이미지를 찍어내기만 하므로 렉이 발생하지 않습니다.
+    // --------------------------------------------------------------------------------
+    const chunkVariations = 4;
+    const tempRT = this.make.renderTexture({ 
+        x: 0, 
+        y: 0, 
+        width: CHUNK_SIZE_PX + 2, // [Seam Fix] 2px 더 크게 생성하여 오버랩 유도
+        height: CHUNK_SIZE_PX + 2,
+        add: false 
+    }, false);
+
+    for (let v = 0; v < chunkVariations; v++) {
+        tempRT.clear();
+        for (let x = 0; x < CHUNK_DIMENSIONS; x++) {
+            for (let y = 0; y < CHUNK_DIMENSIONS; y++) {
+                const colorIndex = Phaser.Math.Between(0, TILE_COLORS.length - 1);
+                const color = TILE_COLORS[colorIndex];
+                
+                // [Seam Fix] 타일을 1px 더 크게 그려서(TILE_SIZE + 1) 타일 간 빈틈 제거
+                tempRT.fill(color, 1, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE + 1, TILE_SIZE + 1);
+            }
+        }
+        // 생성된 텍스처를 고유 키로 저장 ('chunk_texture_0', 'chunk_texture_1' ...)
+        tempRT.saveTexture(`chunk_texture_${v}`);
+    }
+    tempRT.destroy(); // 임시 RT 해제
+    // --------------------------------------------------------------------------------
+
 
     const isMobile = this.sys.game.device.os.android || this.sys.game.device.os.iOS;
     this.data.set('isMobile', isMobile);
@@ -335,11 +372,12 @@ function create(this: Phaser.Scene) {
     this.data.set('isHaak', false);
     this.data.set('shockwaveCooldown', false);
 
-    // --- [최적화] 청크 관리 그룹 및 Set 초기화 ---
+    // [최적화] 청크 관리 그룹 및 Set 초기화
     this.data.set('generatedChunks', new Set<string>());
-    const chunkGroup = this.add.group(); // 청크 렌더 텍스처들을 담을 그룹
+    const chunkGroup = this.add.group(); 
     this.data.set('chunkGroup', chunkGroup);
     
+    // 초기 맵 생성
     generateSurroundingChunks.call(this, player.x, player.y);
 
     this.cameras.main.startFollow(player, true, 0.05, 0.05);
@@ -353,8 +391,9 @@ function create(this: Phaser.Scene) {
 }
 
 /**
- * [최적화] 400개의 사각형 오브젝트 대신 1개의 RenderTexture를 사용합니다.
- * Draw Call이 1회로 줄어들어 성능이 비약적으로 상승합니다.
+ * [최적화] 미리 생성된 텍스처를 Image로 배치합니다.
+ * 실시간 Draw Call이 1회로 줄어들어 렉이 사라지며,
+ * 텍스처 크기를 +2px로 생성했기 때문에 자동으로 오버랩되어 흰 줄이 사라집니다.
  */
 function generateTileChunk(this: Phaser.Scene, chunkX: number, chunkY: number) {
     const generatedChunks = this.data.get('generatedChunks') as Set<string>;
@@ -368,40 +407,19 @@ function generateTileChunk(this: Phaser.Scene, chunkX: number, chunkY: number) {
     const startWorldX = chunkX * CHUNK_SIZE_PX;
     const startWorldY = chunkY * CHUNK_SIZE_PX;
 
-    // RenderTexture 생성 (단일 텍스처)
-    const rt = this.add.renderTexture(
-        startWorldX, 
-        startWorldY, 
-        CHUNK_SIZE_PX + 2, // 너비 + 2
-        CHUNK_SIZE_PX + 2  // 높이 + 2
-    );
-    rt.setOrigin(0, 0);
-    rt.setDepth(0); // 배경이므로 가장 아래
+    // [최적화] 저장해둔 4개의 텍스처 중 하나를 랜덤으로 선택
+    const randomTextureKey = `chunk_texture_${Phaser.Math.Between(0, 3)}`;
 
-    // RenderTexture에 타일 그리기 (fill 사용)
-    for (let x = 0; x < CHUNK_DIMENSIONS; x++) {
-        for (let y = 0; y < CHUNK_DIMENSIONS; y++) {
-            const colorIndex = Phaser.Math.Between(0, TILE_COLORS.length - 1);
-            const color = TILE_COLORS[colorIndex];
-            
-            // [수정] TILE_SIZE 대신 TILE_SIZE + 1을 사용하여 
-            // 타일끼리 1픽셀씩 겹치게 그립니다. (빈틈 제거)
-            rt.fill(
-                color, 
-                1, 
-                x * TILE_SIZE, 
-                y * TILE_SIZE, 
-                TILE_SIZE + 1, // 너비 + 1
-                TILE_SIZE + 1  // 높이 + 1
-            );
-        }
-    }
+    // Image 객체 생성 (배경)
+    const chunkImage = this.add.image(startWorldX, startWorldY, randomTextureKey);
+    chunkImage.setOrigin(0, 0);
+    chunkImage.setDepth(0); // 배경이므로 가장 아래
 
-    // 청크 그룹에 추가하여 관리
+    // 청크 그룹에 추가하여 관리 (나중에 삭제하기 위함)
     const chunkGroup = this.data.get('chunkGroup') as Phaser.GameObjects.Group;
     if (chunkGroup) {
-        chunkGroup.add(rt);
-        rt.setData('chunkKey', chunkKey); // 삭제 시 Set 업데이트를 위해 키 저장
+        chunkGroup.add(chunkImage);
+        chunkImage.setData('chunkKey', chunkKey); 
     }
 }
 
@@ -412,12 +430,12 @@ function cleanupFarChunks(this: Phaser.Scene, playerX: number, playerY: number) 
     const chunkGroup = this.data.get('chunkGroup') as Phaser.GameObjects.Group;
     const generatedChunks = this.data.get('generatedChunks') as Set<string>;
     
-    // 청크 크기 * (버퍼 + 1) 거리보다 멀어지면 삭제
-    const cleanupDistance = CHUNK_SIZE_PX * (GENERATION_BUFFER_CHUNKS + 2); 
+    // 청크 크기 * (버퍼 + 3) 거리보다 멀어지면 삭제 (넉넉하게 설정하여 잦은 삭제 방지)
+    const cleanupDistance = CHUNK_SIZE_PX * (GENERATION_BUFFER_CHUNKS + 3); 
 
     if (chunkGroup) {
         chunkGroup.getChildren().forEach((child: any) => {
-            // RenderTexture의 중심점 대략 계산 (width/2) 혹은 그냥 원점 기준
+            // child는 Image 객체입니다.
             const distance = Phaser.Math.Distance.Between(playerX, playerY, child.x + CHUNK_SIZE_PX/2, child.y + CHUNK_SIZE_PX/2);
             
             if (distance > cleanupDistance) {
@@ -426,7 +444,7 @@ function cleanupFarChunks(this: Phaser.Scene, playerX: number, playerY: number) 
                     generatedChunks.delete(key);
                 }
                 chunkGroup.killAndHide(child); // 그룹에서 비활성화
-                child.destroy(); // 메모리에서 완전 제거
+                chunkGroup.remove(child, true, true); // 메모리에서 완전 제거
             }
         });
     }
@@ -442,7 +460,7 @@ function generateSurroundingChunks(this: Phaser.Scene, worldX: number, worldY: n
         }
     }
     
-    // [최적화] 청크 정리 함수 호출
+    // 청크 정리 함수 호출
     cleanupFarChunks.call(this, worldX, worldY);
 }
 
@@ -502,7 +520,7 @@ function spawnFishItem(this: Phaser.Scene) {
         const x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right);
         const y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom);
 
-        // [최적화] create 대신 get 사용 (오브젝트 풀링)
+        // [최적화] 오브젝트 풀링 (get)
         const fish = fishItems.get(x, y, 'fish_item_sprite') as Phaser.Physics.Arcade.Sprite;
         if (!fish) return;
 
@@ -533,7 +551,6 @@ function spawnButterfly(this: Phaser.Scene, butterflies: Phaser.Physics.Arcade.G
     const x = Phaser.Math.Between(camera.worldView.left, camera.worldView.right);
     const y = Phaser.Math.Between(camera.worldView.top, camera.worldView.bottom);
 
-    // [최적화] create 대신 get 사용
     const butterfly = butterflies.get(x, y, 'butterfly_sprite_3frame') as Phaser.Physics.Arcade.Sprite;
     if(!butterfly) return;
 
@@ -569,7 +586,6 @@ function spawnMouse(this: Phaser.Scene, mice: Phaser.Physics.Arcade.Group, playe
         default: x = 0; y = 0; break;
     }
 
-    // [최적화] get 사용 및 상태 리셋
     const mouse = mice.get(x, y, 'mouse_enemy_sprite') as Phaser.Physics.Arcade.Sprite;
     if (!mouse) return;
 
@@ -609,7 +625,6 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
 
     } while (isDogOverlapping(this, x, y, separationDistance));
 
-    // [최적화] get 사용
     const dog = dogs.get(x, y, 'dog_enemy_sprite') as CustomDogSprite;
     if (!dog) return;
 
@@ -626,7 +641,6 @@ function spawnDog(this: Phaser.Scene, dogs: Phaser.Physics.Arcade.Group, player:
     dog.isKnockedBack = false;
     dog.isStunned = false;
     
-    // AI 상태도 초기화
     dog.setData('aiState', 0);
     dog.setData('strategicTimer', 0);
     
@@ -1233,7 +1247,6 @@ function update(this: Phaser.Scene, time: number, delta: number) {
     mice.getChildren().forEach((mouseObject) => {
         const mouse = mouseObject as Phaser.Physics.Arcade.Sprite;
         if (mouse.active && mouse.body) {
-            // Distance Squared 사용
             const distanceToPlayerSq = Phaser.Math.Distance.Squared(player.x, player.y, mouse.x, mouse.y);
             
             const gatheringSpeed = 70;
